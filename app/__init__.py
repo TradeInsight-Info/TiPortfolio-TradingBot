@@ -1,6 +1,8 @@
 import os
 from flask import Flask
 from dotenv import load_dotenv
+from app.database import init_db
+from app import models
 
 load_dotenv()
 
@@ -17,6 +19,8 @@ def create_app():
     app.config["ALPACA_API_SECRET"] = os.getenv("ALPACA_API_SECRET")
     app.config["ALPACA_MODE"]       = os.getenv("ALPACA_MODE")
 
+    init_db(app)
+    
     from app.routes import bp
     app.register_blueprint(bp)
 
