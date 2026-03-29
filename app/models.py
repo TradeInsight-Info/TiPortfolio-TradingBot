@@ -8,8 +8,8 @@ class RebalanceEvent(Base):
 
     id              = Column(Integer, primary_key=True, autoincrement=True)
     timestamp       = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    target_weights  = Column(JSONB, nullable=False)   # e.g. {"AAPL": 0.5, "INTC": -0.5}
-    orders          = Column(JSONB, nullable=False)   # e.g. [{"symbol": "AAPL", "qty": 10, "side": "buy"}]
+    target_weights  = Column(JSON, nullable=False)   # e.g. {"AAPL": 0.5, "INTC": -0.5}
+    orders          = Column(JSON, nullable=False)   # e.g. [{"symbol": "AAPL", "qty": 10, "side": "buy"}]
     status          = Column(String(10), nullable=False)  # "success" / "failed" / "partial"
     error_message   = Column(Text, nullable=True)
 
