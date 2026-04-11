@@ -21,7 +21,7 @@ def create_app():
 
     init_db(app)
     
-    from app.routes import bp
-    app.register_blueprint(bp)
+    from app.webhook import bp as webhook_bp
+    app.register_blueprint(webhook_bp)
 
     return app
