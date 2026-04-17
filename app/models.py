@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime, Index, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, Integer, String, DateTime, Index, Text, JSON
 from app.database import Base
 
 class RebalanceEvent(Base):
