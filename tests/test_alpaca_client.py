@@ -97,9 +97,7 @@ class TestGetPositionsHappyPath:
         assert "TSLA" in result
         assert result["TSLA"] == 2.0
 
-
-# ── Correct URL for mode ───────────────────────────────────────────────────────
-
+# Correct URL for mode
 class TestEndpointUrl:
     def _get_called_url(self, mock_get):
         return mock_get.call_args[0][0]
@@ -124,9 +122,7 @@ class TestEndpointUrl:
             make_client().get_positions()
             assert "/v2/positions" in self._get_called_url(mock_get)
 
-
-# ── Error handling → AlpacaError ─────────────────────────────────────────────
-
+# Error handling → AlpacaError
 class TestAlpacaErrors:
     def test_timeout_raises_alpaca_error(self):
         with patch("app.alpaca_client.requests.get",
@@ -172,7 +168,9 @@ class TestAlpacaErrors:
         assert exc_info.value.status_code == 500
 
     def test_alpaca_error_is_subclass_of_exception(self):
-        """AlpacaError must be catchable as a generic Exception."""
+        """
+        AlpacaError must be catchable as a generic Exception.
+        """
         err = AlpacaError("test", status_code=401)
         assert isinstance(err, Exception)
         assert err.status_code == 401
