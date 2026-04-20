@@ -95,8 +95,23 @@ def receive_signal():
         body,
     )
 
+    # Fetch current positions from Alpaca
+    try:
+        alpaca = AlpacaClient(
+            api_key=current_app.config["ALPACA_API_KEY"],
+            api_secret=current_app.config["ALPACA_API_SECRET"],
+            mode=current_app.config["ALPACA_MODE"],
+        )
+        current_positions = alpaca.get_positions(
+            target_symbols=set(body["weights"].keys())
+        )
+    except AlpacaError as exc:
+        logger.error("Alpaca error | hash=%s error=%s", payload_hash, exc)
+        return jsonify({"error": f"Failed to fetch positions from Alpaca: {exc}"}), 502 
+
     return jsonify({
         "status": "accepted",
         "received_at": received_at.isoformat(),
         "payload_hash": payload_hash,
+        "current_positions": current_positions, 
     }), 202
