@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import RebalanceEvent
 
-VALID_STATUSES = {"success", "failed", "partial"}
+VALID_STATUSES = {"success", "failed", "partial", "no_change"}
 
 
 class RebalanceRepository:
