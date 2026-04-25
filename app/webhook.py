@@ -81,7 +81,7 @@ def _serialize_orders_for_db(
     """
     Build the list that gets stored in the DB 'orders' JSON column.
 
-    Each element follows the AC2 schema:
+    Each element follows the schema:
         {
             "symbol":          str,   # ticker
             "delta_shares":    int,   # signed: positive=buy, negative=sell
@@ -109,7 +109,9 @@ def _serialize_orders_for_db(
     return rows
 
 def _event_to_dict(event) -> dict:
-    """Serialise a RebalanceEvent ORM object to a plain dict for JSON responses."""
+    """
+    Serialise a RebalanceEvent ORM object to a plain dict for JSON responses.
+    """
     return {
         "id":             event.id,
         "timestamp":      event.timestamp.isoformat(),
