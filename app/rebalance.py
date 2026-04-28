@@ -111,6 +111,28 @@ class RebalanceRepository:
             session.expunge_all()   # detach before session closes
         return events
 
+    # Read - used by GET /delta?since=<ISO timestamp>
+    def get_since(self, since: datetime) -> list[RebalanceEvent]:
+        """
+        Return events strictly newer than `since`, ordered by timestamp descending.
+
+        Args:
+            since: Timezone-aware datetime; only records with timestamp > since
+                   are included.
+
+        Returns:
+            List of detached RebalanceEvent objects, newest first.
+        """
+        with self._tx() as session:
+            events = (
+                session.query(RebalanceEvent)
+                .filter(RebalanceEvent.timestamp > since)
+                .order_by(RebalanceEvent.timestamp.desc())
+                .all()
+            )
+            session.expunge_all()
+        return events
+
     # Read - existing method kept for date-range queries
     def query_by_date_range(
         self,
