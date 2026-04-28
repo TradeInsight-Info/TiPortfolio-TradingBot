@@ -13,7 +13,6 @@ import requests
 from app.calculator import OrderDelta
 from app.order_executor import (
     OrderExecutor,
-    OrderResult,
 )
 
 # Shared fixtures

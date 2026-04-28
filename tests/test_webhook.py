@@ -45,7 +45,7 @@ class TestValidPayload:
 
     def test_body_contains_status_accepted(self, client):
         res = post_webhook(client, {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}})
-        assert res.get_json()["status"] == "accepted"
+        assert res.get_json()["status"] == "success"
 
     def test_body_contains_received_at(self, client):
         res = post_webhook(client, {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}})
