@@ -250,32 +250,3 @@ class OrderExecutor:
             status=status,
             error_message=combined_errors,
         )
-
-def serialize_orders(order_results: list[OrderResult]) -> list[dict]:
-    """
-    Convert a list of OrderResult objects to dicts for JSON storage in the DB.
-
-    The schema matches the 'orders' JSON column in RebalanceEvent so the
-    repository can persist the result directly.
-
-    Example output element:
-        {
-            "symbol":          "SPY",
-            "side":            "buy",
-            "qty":             5,
-            "alpaca_order_id": "abc123",
-            "success":         True,
-            "error":           None
-        }
-    """
-    return [
-        {
-            "symbol":          r.symbol,
-            "side":            r.side,
-            "qty":             r.qty,
-            "alpaca_order_id": r.alpaca_order_id,
-            "success":         r.success,
-            "error":           r.error,
-        }
-        for r in order_results
-    ]
