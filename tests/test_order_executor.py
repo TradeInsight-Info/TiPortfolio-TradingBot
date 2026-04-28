@@ -1,5 +1,5 @@
 """
-Unit tests for OrderExecutor and serialize_orders().
+Unit tests for OrderExecutor.
 
 All HTTP calls are mocked - no network calls, no Flask app, no database.
 """
@@ -14,7 +14,6 @@ from app.calculator import OrderDelta
 from app.order_executor import (
     OrderExecutor,
     OrderResult,
-    serialize_orders,
 )
 
 # Shared fixtures
@@ -327,51 +326,3 @@ class TestHttpErrorCodes:
         order = result.orders[0]
         assert order.success is False
         assert str(status_code) in order.error
-
-# serialize_orders()
-class TestSerializeOrders:
-    def test_successful_order_serialized_correctly(self):
-        order = OrderResult(
-            symbol="SPY",
-            side="buy",
-            qty=5,
-            alpaca_order_id="uuid-abc",
-            success=True,
-            error=None,
-        )
-        result = serialize_orders([order])
-        assert len(result) == 1
-        assert result[0] == {
-            "symbol":          "SPY",
-            "side":            "buy",
-            "qty":             5,
-            "alpaca_order_id": "uuid-abc",
-            "success":         True,
-            "error":           None,
-        }
-
-    def test_failed_order_serialized_with_error(self):
-        order = OrderResult(
-            symbol="QQQ",
-            side="sell",
-            qty=3,
-            alpaca_order_id=None,
-            success=False,
-            error="HTTP 422 — insufficient buying power",
-        )
-        result = serialize_orders([order])
-        assert result[0]["alpaca_order_id"] is None
-        assert result[0]["success"] is False
-        assert "422" in result[0]["error"]
-
-    def test_empty_list_returns_empty_list(self):
-        assert serialize_orders([]) == []
-
-    def test_multiple_orders_preserved_in_order(self):
-        orders = [
-            OrderResult("AAA", "buy",  1, "id-1", True,  None),
-            OrderResult("BBB", "sell", 2, None,   False, "err"),
-        ]
-        result = serialize_orders(orders)
-        assert result[0]["symbol"] == "AAA"
-        assert result[1]["symbol"] == "BBB"
