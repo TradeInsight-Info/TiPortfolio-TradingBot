@@ -27,4 +27,7 @@ def create_app():
     from app.webhook import bp as webhook_bp
     app.register_blueprint(webhook_bp)
 
+    from app.benchmark import bp as benchmark_bp
+    app.register_blueprint(benchmark_bp)
+
     return app
