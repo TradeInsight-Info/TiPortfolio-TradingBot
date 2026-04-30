@@ -17,10 +17,10 @@ import pytest
 from app.order_executor import ExecutionResult, OrderResult
 
 # Set dummy env vars before importing create_app so startup checks pass
-os.environ.setdefault("ALPACA_API_KEY", "test-key")
-os.environ.setdefault("ALPACA_API_SECRET", "test-secret")
-os.environ.setdefault("ALPACA_MODE", "paper")
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ["ALPACA_API_KEY"]    = "test-key"
+os.environ["ALPACA_API_SECRET"] = "test-secret"
+os.environ["ALPACA_MODE"]       = "paper"
+os.environ["DATABASE_URL"]      = "sqlite:///:memory:"
 
 from app import create_app  # noqa: E402
 
