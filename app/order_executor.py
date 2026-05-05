@@ -79,7 +79,7 @@ class OrderExecutor:
         # Alpaca authenticates via custom headers
         self._headers = {
             "APCA-API-KEY-ID":     api_key,
-            "APCA-API-KEY-SECRET": api_secret,
+            "APCA-API-SECRET-KEY": api_secret,
             "Content-Type":        "application/json",
         }
 
