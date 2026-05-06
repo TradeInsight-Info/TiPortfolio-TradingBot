@@ -121,6 +121,35 @@ def _event_to_dict(event) -> dict:
         "error_message":  event.error_message,
     }
 
+# Public-facing helpers for GET /delta
+def _format_order_public(order: dict) -> dict:
+    """
+    Remove internal fields from a stored order dict for public use.
+
+    Exposes only symbol, direction, and the absolute share count.
+    Omits alpaca_order_id and per-order status (internal audit fields).
+    """
+    return {
+        "symbol":    order["symbol"],
+        "direction": order["direction"],
+        "shares":    abs(order["delta_shares"]),  # always a positive integer
+    }
+
+def _event_to_public_dict(event) -> dict:
+    """
+    Serialise a RebalanceEvent for the public GET /delta response.
+
+    Deliberately omits:
+      - id
+      - target_weights
+      - error_message
+    """
+    return {
+        "timestamp": event.timestamp.isoformat(),
+        "status":    event.status,
+        "orders":    [_format_order_public(o) for o in event.orders],
+    }
+
 
 @bp.route("/webhook", methods=["POST"])
 def receive_signal():
@@ -265,13 +294,39 @@ def get_delta():
     The record written by POST /webhook is included in this response
     immediately after the webhook call completes.
 
+    Query params:
+    since (optional): ISO 8601 timestamp. When provided, only records
+                      with timestamp after this value are returned.
+                      e.g.: GET /delta?since=2026-04-01T00:00:00Z
+
     Responses:
-        200 OK - JSON array of rebalance event objects.
+        200 OK - JSON array of rebalance event objects.        
+        400    - 'since' param is present but not a valid ISO 8601 timestamp.
     """
     repo = RebalanceRepository(current_app.config["DB_SESSION"])
-    events = repo.get_all()
+
+    since_param = request.args.get("since")
+    if since_param is not None:
+        # Parse the caller-supplied ISO 8601 timestamp
+        try:
+            since_dt = datetime.fromisoformat(since_param)
+        except ValueError:
+            return jsonify({
+                "error": (
+                    f"Invalid 'since' value: {since_param!r}. "
+                    "Expected ISO 8601 format, e.g. 2026-04-01T00:00:00Z."
+                )
+            }), 400
+
+        # Treat naive timestamps as UTC
+        if since_dt.tzinfo is None:
+            since_dt = since_dt.replace(tzinfo=timezone.utc)
+
+        events = repo.get_since(since_dt)
+    else:
+        events = repo.get_all()
 
     return jsonify({
         "count":  len(events),
-        "events": [_event_to_dict(e) for e in events],
+        "events": [_event_to_public_dict(e) for e in events],
     }), 200
