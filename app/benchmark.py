@@ -19,7 +19,7 @@ Caching:
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import yfinance as yf
@@ -86,6 +86,10 @@ def _get_prices(symbols: list[str], start: date, end: date) -> pd.DataFrame:
     Cache key = sorted symbol list joined by commas.
     Cache is invalidated when the calendar date changes.
     """
+    # end must be at least one day after start
+    if end <= start:
+        end = start + timedelta(days=1)
+
     today = date.today()
     cache_key = ",".join(sorted(symbols))
 
@@ -100,6 +104,18 @@ def _get_prices(symbols: list[str], start: date, end: date) -> pd.DataFrame:
     df = _download_prices(symbols, start, end)
     _price_cache[cache_key] = (today, df)
     return df
+
+def _nearest_trading_day(d: date) -> date:
+    """
+    Roll back a date to the most recent weekday (Mon-Fri).
+    Saturday -> Friday, Sunday -> Friday, weekday -> unchanged.
+    """
+    # weekday(): Mon=0 ... Fri=4, Sat=5, Sun=6
+    if d.weekday() == 5:   # Saturday
+        return d - timedelta(days=1)
+    if d.weekday() == 6:   # Sunday
+        return d - timedelta(days=2)
+    return d
 
 def _benchmark_curve(ticker: str, prices: pd.DataFrame) -> pd.Series:
     """
@@ -220,8 +236,10 @@ def get_benchmark():
         return jsonify({"no_data": True}), 200
 
     events_asc = sorted(events, key=lambda e: e.timestamp)
-    first_date = events_asc[0].timestamp.date()
-    today = date.today()
+    first_date = _nearest_trading_day(events_asc[0].timestamp.date())
+    today      = _nearest_trading_day(date.today())
+    # end must be at least one day after start so yfinance has a valid range
+    end_date   = today + timedelta(days=1)
 
     # Collect every symbol the bot has ever traded
     bot_symbols: set[str] = set()
@@ -238,7 +256,7 @@ def get_benchmark():
     # Fetch all symbols together in one yfinance call (cached)
     all_symbols = sorted(bot_symbols | set(bench_symbols))
     try:
-        prices = _get_prices(all_symbols, first_date, today)
+        prices = _get_prices(all_symbols, first_date, end_date)
     except Exception as exc:
         logger.error("yfinance price fetch failed: %s", exc)
         return jsonify({"error": f"Failed to fetch price data: {exc}"}), 502
