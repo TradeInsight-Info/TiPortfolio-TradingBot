@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: bot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 5s
+      retries: 10
+
+  tradingbot:
+    build: .
+    ports:
+      - "5000:5000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/bot
+    depends_on:
+      db:
+        condition: service_healthy
+
+  scheduler:
+    build: ./scheduler
+    environment:
+      TRADING_BOT_WEBHOOK_URL: http://tradingbot:5000
+      TZ: America/New_York
+      LOG_LEVEL: INFO
+    volumes:
+      - ../TiPortfolio-Examples:/tiportfolio-examples:ro
+    depends_on:
+      - tradingbot
+
+volumes:
+  pgdata:
