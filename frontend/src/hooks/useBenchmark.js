@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-
-const SUPPORTED_TICKERS = ["SPY", "QQQ", "QQQ+GLD+BIL"];
+import { cacheKey, readCache, writeCache, clearCache } from '../utils/cache';
 
 export function useBenchmark(ticker) {
-  const [data, setData]       = useState(null);
+  const key = cacheKey('benchmark', ticker);
+
+  // Initialise from cache so the chart renders immediately on repeat visits
+  const cached = readCache(key);
+  const [data, setData]       = useState(cached ?? null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
 
@@ -23,13 +26,23 @@ export function useBenchmark(ticker) {
         throw new Error(json.error ?? `Server returned ${response.status}`);
       }
 
+      // If the server signals a schema change, wipe the stale cache entry
+      if (json.full_refresh) {
+        clearCache(key);
+      }
+
       setData(json);
+      
+      // Only cache non-empty, data-bearing responses
+      if (!json.nodata) {
+        writeCache(key, json);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [encodedTicker]);
+  }, [encodedTicker, key]);
 
   useEffect(() => {
     fetchBenchmark();
