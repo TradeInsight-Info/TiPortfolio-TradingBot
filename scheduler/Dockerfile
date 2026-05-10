@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && \
 
 RUN pip install --no-cache-dir tiportfolio
 
+WORKDIR /app
+
+COPY strategies/ /app/strategies/
 COPY crontab /etc/supercronic/crontab
 
 CMD ["supercronic", "/etc/supercronic/crontab"]

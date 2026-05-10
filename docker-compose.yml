@@ -29,8 +29,6 @@ services:
       TRADING_BOT_WEBHOOK_URL: http://tradingbot:5000
       TZ: America/New_York
       LOG_LEVEL: INFO
-    volumes:
-      - ../TiPortfolio-Examples:/tiportfolio-examples:ro
     depends_on:
       - tradingbot
 
