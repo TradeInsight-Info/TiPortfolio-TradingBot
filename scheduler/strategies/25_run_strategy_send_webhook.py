@@ -115,6 +115,13 @@ def build_portfolio(vix_data: dict) -> ti.Portfolio:
 
 def run_strategy(start: str, end: str, use_csv: bool) -> StrategyOutput:
     """Backtest the strategy and return the most recent target weights."""
+    if use_csv:
+        missing = [k for k, p in CSV_DATA.items() if not Path(p).exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"CSV files not found for {missing}. "
+                "--csv is only available in local development, not inside Docker."
+            )
     csv = CSV_DATA if use_csv else None
 
     logger.info("Fetching market data %s → %s (csv=%s)", start, end, bool(csv))
@@ -176,17 +183,13 @@ def validate_target_weights(weights: dict[str, float]) -> str | None:
       - Negative weight reject: aligns with long-only Alpaca account intent
       - Universe match: refuse if the strategy emits an unexpected ticker
 
-    TODO (you): implement the policy you want. ~5–10 lines of focused checks.
-    Examples to start from (delete what you don't want):
-
-        if any(w < 0 for w in weights.values()):
-            return "Negative weight detected; this account is long-only."
-        if max(weights.values()) > 0.90:
-            return "Concentration > 90%; refusing to ship."
-        if set(weights) != set(TICKERS):
-            return f"Unexpected universe: {set(weights)} vs {set(TICKERS)}."
     """
-    # >>> implement here <<<
+    if any(w < 0 for w in weights.values()):
+        return f"Negative weight detected — this account is long-only: {weights}"
+    if max(weights.values()) > 0.90:
+        return f"Single position > 90% — refusing to ship to avoid concentration risk: {weights}"
+    if set(weights) != set(TICKERS):
+        return f"Unexpected ticker universe: got {set(weights)}, expected {set(TICKERS)}"
     return None
 
 
