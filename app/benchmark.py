@@ -117,7 +117,7 @@ def _nearest_trading_day(d: date) -> date:
         return d - timedelta(days=2)
     return d
 
-def _benchmark_curve(ticker: str, prices: pd.DataFrame) -> pd.Series:
+def _benchmark_curve(ticker: str, prices: pd.DataFrame, first_date: date) -> pd.Series:
     """
     Build the benchmark cumulative-return series, normalised to 1.0 at the start.
 
@@ -128,6 +128,8 @@ def _benchmark_curve(ticker: str, prices: pd.DataFrame) -> pd.Series:
         if ticker not in prices.columns:
             return pd.Series(dtype=float)
         series = prices[ticker].dropna()
+        # Only use data from first rebalance date onwards
+        series = series.loc[series.index >= pd.Timestamp(first_date)]
         if series.empty or series.iloc[0] == 0:
             return pd.Series(dtype=float)
         return series / series.iloc[0]
@@ -264,7 +266,7 @@ def get_benchmark():
     if prices.empty:
         return jsonify({"no_data": True}), 200
 
-    bench = _benchmark_curve(raw_ticker, prices)
+    bench = _benchmark_curve(raw_ticker, prices, first_date)
     bot   = _bot_equity_curve(events_asc, prices)
 
     def _to_list(series: pd.Series) -> list[dict]:
