@@ -1,0 +1,2 @@
+# VIX strategy runner — weekdays at 9:30 AM ET (set TZ=America/New_York in the container)
+30 9 * * 1-5 python /app/strategies/25_run_strategy_send_webhook.py
