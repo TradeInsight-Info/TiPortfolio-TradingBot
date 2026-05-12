@@ -38,7 +38,9 @@ export function useDelta() {
           clearCache(CACHE_KEY);
           const freshEvents = data.events ?? [];
           setEvents(freshEvents);
-          persistCache(freshEvents);
+          if (freshEvents.length > 0) {
+            persistCache(freshEvents);
+          }
           return;
         }
 
@@ -47,7 +49,9 @@ export function useDelta() {
         // Merge: new records come first (newest-first order), sorted by timestamp
         const merged = mergeEvents(cached?.events ?? [], incoming);
         setEvents(merged);
-        persistCache(merged);
+        if (merged.length > 0) {
+          persistCache(merged);
+        }
 
       } catch (err) {
         if (!cancelled) {
