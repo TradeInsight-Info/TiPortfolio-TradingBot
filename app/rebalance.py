@@ -90,6 +90,60 @@ class RebalanceRepository:
 
         return event
 
+    def update_orders(
+        self,
+        event_id: int,
+        orders: list[dict],
+    ) -> RebalanceEvent:
+        """
+        Replace the orders JSON column of an existing rebalance event.
+
+        Called by the re-poll endpoint after fetching updated fill status
+        from Alpaca.  The event's top-level status field is NOT changed here
+        because a partial or failed execution status reflects order submission,
+        not fill outcome.
+
+        Args:
+            event_id: Primary key of the RebalanceEvent row to update.
+            orders:   Full replacement list for the orders JSON column.
+
+        Returns:
+            The updated RebalanceEvent (detached from the session).
+
+        Raises:
+            ValueError:       event_id not found in the database.
+            SQLAlchemyError:  DB error - transaction is rolled back automatically.
+        """
+        with self._tx() as session:
+            event = session.get(RebalanceEvent, event_id)
+            if event is None:
+                raise ValueError(f"RebalanceEvent with id={event_id} not found.")
+
+            # SQLAlchemy does not detect in-place mutations to JSON columns;
+            # assign a new list so the ORM marks the column as dirty.
+            event.orders = list(orders)
+
+            session.flush()
+            session.expunge(event)
+
+        return event
+
+    # Read - used by GET /delta/{id} to return a single event
+    def get_by_id(self, event_id: int) -> RebalanceEvent | None:
+        """
+        Return a single RebalanceEvent by primary key, or None if not found.
+
+        Used by the re-poll endpoint to load the event before querying Alpaca.
+
+        Returns:
+            Detached RebalanceEvent, or None.
+        """
+        with self._tx() as session:
+            event = session.get(RebalanceEvent, event_id)
+            if event is not None:
+                session.expunge(event)
+        return event
+
     # Read - used by GET /delta to return records immediately after webhook
     def get_all(self) -> list[RebalanceEvent]:
         """
