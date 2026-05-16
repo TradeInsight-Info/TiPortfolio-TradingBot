@@ -29,6 +29,27 @@ const FILL_STATUS = [
   "rejected",
 ];
 
+const formatStatus = (raw) => {
+  if (!raw) return '—';
+  const map = {
+    // fill_status
+    filled:          'Filled',
+    partiallyfilled: 'Partially Filled',
+    canceled:        'Canceled',
+    rejected:        'Rejected',
+    pending:         'Pending',
+    accepted:        'Accepted',
+    expired:         'Expired',
+    doneforday:      'Done For Day',
+    // event status
+    success:         'Success',
+    failed:          'Failed',
+    partial:         'Partial',
+    nochange:        'No Change',
+  };
+  return map[raw.toLowerCase()] ?? raw;
+};
+
 // Alpaca fill status badge colour
 // "pending"  → orange warning  (initial poll window expired before fill confirmed)
 // "filled"   → green success
@@ -42,7 +63,7 @@ function fillStatusBadge(fillStatus) {
     canceled:         "badge-primary",
     rejected:         "badge-error",
   };
-  return styles[fillStatus] ?? "badge-primary";
+  return styles[fillStatus] ?? "badge-info";
 }
 
 // WarningIcon shown next to the retry button when a fill is still pending
@@ -265,10 +286,10 @@ export default function DeltaTable() {
               <td className="tabular-nums">{row.shares}</td>
 
               {/* Fill status badge */}
-              <td>
+              <td className="text-center font-bold">
                 {row.fillStatus ? (
-                  <span className={`badge badge-sm ${fillStatusBadge(row.fillStatus)}`}>
-                    {row.fillStatus}
+                  <span className={`badge badge-sm badge-soft ${fillStatusBadge(row.fillStatus)}`}>
+                    {formatStatus(row.fillStatus)}
                   </span>
                 ) : (
                   <span className="text-gray-400">—</span>
@@ -283,9 +304,9 @@ export default function DeltaTable() {
 
               {/* Event-level status badge: only on the first row */}
               {row.isFirstRow && (
-                <td rowSpan={row.orderCount} className="align-top pt-3">
-                  <span className={`badge badge-sm ${STATUS_STYLES[row.status] ?? "badge-ghost"}`}>
-                    {row.status}
+                <td rowSpan={row.orderCount} className="align-top text-center pt-3 font-bold">
+                  <span className={`badge badge-sm badge-soft ${STATUS_STYLES[row.status] ?? "badge-primary"}`}>
+                    {formatStatus(row.status)}
                   </span>
                 </td>
               )}
