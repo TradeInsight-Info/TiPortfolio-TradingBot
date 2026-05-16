@@ -203,8 +203,11 @@ def send_webhook(base_url: str, weights: dict[str, float], timeout: float = 10.0
     url = base_url.rstrip("/") + "/webhook"
     payload = {"weights": weights}
 
+    secret = os.environ.get("WEBHOOK_SECRET", "")
+    headers = {"Authorization": f"Bearer {secret}"} if secret else {}
+
     logger.info("POST %s | payload=%s", url, payload)
-    resp = requests.post(url, json=payload, timeout=timeout)
+    resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
 
     try:
         body = resp.json()
