@@ -19,6 +19,14 @@ def create_app():
     app.config["ALPACA_API_SECRET"] = os.getenv("ALPACA_API_SECRET")
     app.config["ALPACA_MODE"]       = os.getenv("ALPACA_MODE")
     app.config["WEBHOOK_SECRET"]    = os.getenv("WEBHOOK_SECRET")
+    app.config["ALLOWED_ORIGINS"]   = os.getenv("ALLOWED_ORIGINS", "")
+    app.config["SENTRY_DSN"]        = os.getenv("SENTRY_DSN")
+
+    sentry_dsn = app.config["SENTRY_DSN"]
+    if sentry_dsn:
+        import sentry_sdk
+        from sentry_sdk.integrations.flask import FlaskIntegration
+        sentry_sdk.init(dsn=sentry_dsn, integrations=[FlaskIntegration()], traces_sample_rate=0.1)
 
     init_db(app)
 
@@ -30,5 +38,10 @@ def create_app():
 
     from app.benchmark import bp as benchmark_bp
     app.register_blueprint(benchmark_bp)
+
+    allowed_origins = app.config["ALLOWED_ORIGINS"]
+    if allowed_origins:
+        from flask_cors import CORS
+        CORS(app, origins=allowed_origins.split(","), methods=["GET"])
 
     return app
