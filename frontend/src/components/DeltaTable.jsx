@@ -6,7 +6,7 @@ const STATUS_STYLES = {
   success: "badge-success",
   partial: "badge-warning",
   failed:  "badge-error",
-  no_change: "badge-neutral",
+  no_change: "badge-primary",
 };
 
 // Labels for order directions
@@ -32,17 +32,17 @@ const FILL_STATUS = [
 // Alpaca fill status badge colour
 // "pending"  → orange warning  (initial poll window expired before fill confirmed)
 // "filled"   → green success
-// everything else (partially_filled, canceled, rejected, …) → neutral grey
+// everything else (partially_filled, canceled, rejected, …) → primary
 function fillStatusBadge(fillStatus) {
   if (!fillStatus) return null;
   const styles = {
     filled:           "badge-success",
     partially_filled: "badge-warning",
     pending:          "badge-warning",
-    canceled:         "badge-neutral",
+    canceled:         "badge-primary",
     rejected:         "badge-error",
   };
-  return styles[fillStatus] ?? "badge-neutral";
+  return styles[fillStatus] ?? "badge-primary";
 }
 
 // WarningIcon shown next to the retry button when a fill is still pending
@@ -284,7 +284,7 @@ export default function DeltaTable() {
               {/* Event-level status badge: only on the first row */}
               {row.isFirstRow && (
                 <td rowSpan={row.orderCount} className="align-top pt-3">
-                  <span className={`badge ${STATUS_STYLES[row.status] ?? "badge-ghost"}`}>
+                  <span className={`badge badge-sm ${STATUS_STYLES[row.status] ?? "badge-ghost"}`}>
                     {row.status}
                   </span>
                 </td>
