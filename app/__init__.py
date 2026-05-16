@@ -18,6 +18,7 @@ def create_app():
     app.config["ALPACA_API_KEY"]    = os.getenv("ALPACA_API_KEY")
     app.config["ALPACA_API_SECRET"] = os.getenv("ALPACA_API_SECRET")
     app.config["ALPACA_MODE"]       = os.getenv("ALPACA_MODE")
+    app.config["WEBHOOK_SECRET"]    = os.getenv("WEBHOOK_SECRET")
 
     init_db(app)
 
