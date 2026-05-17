@@ -90,6 +90,7 @@ def _validate_weights(weights: object) -> str | None:
 def _serialize_orders_for_db(
     deltas,
     order_results,
+    portfolio_value: float | None = None,
 ) -> list[dict]:
     """
     Build the list that gets stored in the DB 'orders' JSON column.
@@ -104,6 +105,7 @@ def _serialize_orders_for_db(
             "fill_status":      str | None,  # Alpaca lifecycle status after initial poll
             "filled_qty":       float | None,
             "filled_avg_price": float | None,
+            "portfolio_value":  float | None,
         }
 
     Merges delta information (from calculator) with execution outcomes
@@ -125,6 +127,7 @@ def _serialize_orders_for_db(
             "fill_status":      result.fill_status if result else None,
             "filled_qty":       result.filled_qty if result else None,
             "filled_avg_price": result.filled_avg_price if result else None,
+            "portfolio_value":  portfolio_value,
         })
     return rows
 
@@ -161,6 +164,7 @@ def _format_order_public(order: dict) -> dict:
         "fill_status":      order.get("fill_status"),
         "filled_qty":       order.get("filled_qty"),
         "filled_avg_price": order.get("filled_avg_price"),
+        "portfolio_value":  order.get("portfolio_value"), 
     }
 
 def _event_to_public_dict(event) -> dict:
@@ -290,7 +294,7 @@ def receive_signal():
     # 7. Persist the full rebalance record to DB
     # This block runs AFTER order submission - whether orders succeeded or failed.
     # The record is always written so every decision is auditable.
-    db_orders = _serialize_orders_for_db(deltas, execution_result.orders)
+    db_orders = _serialize_orders_for_db(deltas, execution_result.orders, portfolio_value)
 
     try:
         repo = RebalanceRepository(current_app.config["DB_SESSION"])
