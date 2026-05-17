@@ -6,11 +6,17 @@ class Base(DeclarativeBase):
     pass
 
 def get_engine():
-    db_url = os.getenv(
-        "DATABASE_URL",
-        "postgresql://user:password@localhost:5432/bot"
+    # DATABASE_URL overrides individual parts (useful for tests / local dev)
+    url = os.getenv("DATABASE_URL") or (
+        "postgresql://{user}:{password}@{host}:{port}/{name}".format(
+            user=os.getenv("DB_USER", "postgres"),
+            password=os.getenv("DB_PASSWORD", ""),
+            host=os.getenv("DB_HOST", "localhost"),
+            port=os.getenv("DB_PORT", "5432"),
+            name=os.getenv("DB_NAME", "bot"),
+        )
     )
-    return create_engine(db_url)
+    return create_engine(url)
 
 def init_db(app):
     """
