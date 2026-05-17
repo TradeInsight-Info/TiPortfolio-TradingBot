@@ -1,0 +1,42 @@
+name: Deploy Frontend to Cloudflare Pages
+
+on:
+  push:
+    branches: [release]
+    paths:
+      - frontend/**
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: https://ti-bot-api.tradeinsight.info
+        run: pnpm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: tiportfolio-demo
+          directory: frontend/dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
