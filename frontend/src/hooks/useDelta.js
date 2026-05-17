@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cacheKey, readCache, writeCache, clearCache } from '../utils/cache';
 
 const CACHE_KEY = cacheKey('delta');
@@ -14,8 +14,17 @@ export function useDelta() {
     let cancelled = false;
 
     async function fetchDelta() {
+      // Detect stale cache: if the first cached event has no `id` field,
+      // the cache was written by the old version of the API.
+      // Force a full refresh so we get the new format with id + fill fields.
+      const cacheIsStale =
+        cached?.events?.length > 0 && cached.events[0].id == null;
+
+      if (cacheIsStale) {
+        clearCache(CACHE_KEY);
+      }
       // Build the incremental URL: if we have cached data, ask for newer records
-      const latestTimestamp = cached?.latestTimestamp ?? null;
+      const latestTimestamp = (!cacheIsStale && cached?.latestTimestamp) ? cached.latestTimestamp : null;
       const url = latestTimestamp
         ? `/api/delta?since=${encodeURIComponent(latestTimestamp)}`
         : '/api/delta';
@@ -33,7 +42,7 @@ export function useDelta() {
         }
         if (cancelled) return;
 
-        // If the server signals a schema change, wipe the cache and use fresh data only
+        // Server signals a schema change: wipe stale cache and use fresh data only
         if (data.full_refresh) {
           clearCache(CACHE_KEY);
           const freshEvents = data.events ?? [];
@@ -46,6 +55,18 @@ export function useDelta() {
 
         const incoming = data.events ?? [];
 
+        // When cache was stale, we did a full fetch (/api/delta with no ?since).
+        // incoming already contains ALL events in the new format (with id + fill fields).
+        // Do NOT merge with stale cache - mergeEvents deduplicates by timestamp,
+        // which would discard all incoming events and keep the old id-less data.
+        if (cacheIsStale) {
+          setEvents(incoming);
+          if (incoming.length > 0) {
+            persistCache(incoming);
+          }
+          return;
+        }
+        
         // Merge: new records come first (newest-first order), sorted by timestamp
         const merged = mergeEvents(cached?.events ?? [], incoming);
         setEvents(merged);
@@ -70,9 +91,43 @@ export function useDelta() {
     return () => {
       cancelled = true;
     };
-  }, []); // Run once on load
+  }, []); // Run once on mount
 
-  return { events, loading, error };
+  /**
+   * Re-poll Alpaca fill status for a single event's pending orders.
+   *
+   * Called when the user clicks the retry button on a pending event.
+   * Updates the matching event in local state (and cache) with the
+   * freshest fill data returned by the server.
+   *
+   * @param {number} eventId - The event's numeric id from the API response.
+   * @returns {{ ok: boolean, error?: string }}
+   */
+  const refreshEvent = useCallback(async (eventId) => {
+    try {
+      const response = await fetch(`/api/delta/${eventId}/refresh`, {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { ok: false, error: data.error ?? `Server returned ${response.status}` };
+      }
+
+      // Swap the stale event in state with the updated one returned by the server
+      setEvents(prev => {
+        const updated = prev.map(e => (e.id === eventId ? data : e));
+        persistCache(updated);
+        return updated;
+      });
+
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }, []);
+
+  return { events, loading, error, refreshEvent };
 }
 
 /**

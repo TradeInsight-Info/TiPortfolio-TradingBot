@@ -6,6 +6,7 @@ Responsibilities:
 - Fetch /v2/positions and return {symbol: float(qty)}
 - Fetch /v2/stocks/trades/latest and return {symbol: float(price)}
 - Fetch /v2/account and return float(equity)
+- Fetch /v2/orders/{order_id} and return fill status 
 - Fill 0.0 for any target symbol not currently held
 - Wrap every network/HTTP failure into AlpacaError so callers
   only need to catch one exception type
@@ -175,6 +176,52 @@ class AlpacaClient:
         equity = float(body["equity"])
         logger.info("Account equity: %.2f", equity)
         return equity
+
+    def get_order(self, order_id: str) -> dict:
+        """
+        Fetch the current state of a single order from Alpaca.
+
+        Uses the trading API endpoint:
+            GET /v2/orders/{order_id}
+
+        Called after order submission to check whether the order 
+        has been filled by the exchange.
+
+        Key fields in the returned dict:
+            status          - Alpaca order lifecycle status, e.g.:
+                                "new"              order accepted, not yet at exchange
+                                "partially_filled" some shares filled
+                                "filled"           fully executed
+                                "canceled"         cancelled before fill
+                                "rejected"         exchange rejected the order
+            filled_qty      - number of shares actually executed (string, may be "0")
+            filled_avg_price - average execution price per share (string or None)
+
+        Args:
+            order_id: Alpaca's UUID string for the order (returned when the
+                      order was first submitted via POST /v2/orders).
+
+        Returns:
+            Raw JSON dict from Alpaca containing the full order object.
+            Callers should read "status", "filled_qty", and "filled_avg_price".
+
+        Raises:
+            AlpacaError: on network failure or if Alpaca returns a non-2xx
+                         response (e.g. 404 when order_id is invalid).
+        """
+        url = f"{self._base_url}/v2/orders/{order_id}"
+        logger.info("Fetching order status | order_id=%s", order_id)
+
+        body = self._get(url)
+
+        logger.info(
+            "Order status | order_id=%s status=%s filled_qty=%s filled_avg_price=%s",
+            order_id,
+            body.get("status"),
+            body.get("filled_qty"),
+            body.get("filled_avg_price"),
+        )
+        return body
 
     # Internal helpers
     def _get(self, url: str) -> dict | list:

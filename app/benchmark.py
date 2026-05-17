@@ -69,11 +69,15 @@ def _download_prices(symbols: list[str], start: date, end: date) -> pd.DataFrame
     if raw.empty:
         return pd.DataFrame()
 
-    # yfinance returns flat columns for a single ticker and
-    # a (Price, Symbol) MultiIndex for multiple tickers.
+    # Extract closing prices regardless of yfinance column format.
+    # Newer yfinance versions return MultiIndex columns even for a single ticker,
     if isinstance(raw.columns, pd.MultiIndex):
         close = raw["Close"].copy()
+        # Single ticker case: Close is a Series, convert to DataFrame
+        if isinstance(close, pd.Series):
+            close = close.to_frame(name=symbols[0])
     else:
+        # Older yfinance: single ticker returns flat column named "Close"
         close = raw[["Close"]].rename(columns={"Close": symbols[0]})
 
     close.index = pd.to_datetime(close.index).normalize()

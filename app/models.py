@@ -8,7 +8,23 @@ class RebalanceEvent(Base):
     id              = Column(Integer, primary_key=True, autoincrement=True)
     timestamp       = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     target_weights  = Column(JSON, nullable=False)   # e.g. {"AAPL": 0.5, "INTC": -0.5}
-    orders          = Column(JSON, nullable=False)   # e.g. [{"symbol": "AAPL", "qty": 10, "side": "buy"}]
+
+    # Each element in the orders list carries fill confirmation fields:
+    #   {
+    #     "symbol":            str,        # ticker, e.g. "SPY"
+    #     "delta_shares":      int,        # signed: positive=buy, negative=sell
+    #     "direction":         str,        # "buy" | "sell"
+    #     "alpaca_order_id":   str | None, # Alpaca UUID; None if submission failed
+    #     "status":            str,        # "accepted" | "failed"
+    #     "fill_status":       str | None, # Alpaca order lifecycle status after polling
+    #                                      # e.g. "filled", "partially_filled",
+    #                                      # "canceled", "rejected", "pending" (poll timeout)
+    #                                      # None when order submission itself failed
+    #     "filled_qty":        float | None, # shares actually executed; None if not filled
+    #     "filled_avg_price":  float | None  # average execution price; None if not filled
+    #   }
+    orders          = Column(JSON, nullable=False)
+
     status          = Column(String(10), nullable=False)  # "success" / "failed" / "partial"
     error_message   = Column(Text, nullable=True)
 
@@ -16,4 +32,3 @@ class RebalanceEvent(Base):
     __table_args__ = (
         Index("ix_rebalance_events_timestamp", "timestamp"),
     )
-
