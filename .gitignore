@@ -17,3 +17,4 @@ src/tiportfolio.egg-info/
 .coverage.*
 htmlcov/
 .ruff_cache/
+k8s/default-secrets.yaml
