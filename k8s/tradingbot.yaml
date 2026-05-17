@@ -59,7 +59,7 @@ spec:
             - name: DB_PORT
               value: "5432"
             - name: DB_NAME
-              value: "tiportfolio"
+              value: "tiportfolio-demo"
             - name: DB_USER
               value: "postgres"
             - name: DB_PASSWORD
@@ -85,7 +85,7 @@ spec:
                   name: default-secrets
                   key: tiportfolio-webhook-secret
             - name: ALLOWED_ORIGINS
-              value: "https://sample-strategy.tradeinsight.info"
+              value: "https://tiportfolio-demo.tradeinsight.info"
             - name: SENTRY_DSN
               valueFrom:
                 secretKeyRef:
