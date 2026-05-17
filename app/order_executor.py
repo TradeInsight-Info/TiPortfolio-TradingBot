@@ -118,20 +118,10 @@ class OrderExecutor:
         """
         Submit market orders for every non-zero delta, then poll each
         accepted order once to capture fill confirmation.
-        
-        If every delta is zero the list is empty and no HTTP call is made.
 
-        Flow:
-          1. Submit all orders to Alpaca.
-          2. Wait _FILL_POLL_DELAY_SECONDS to allow market orders to fill.
-          3. For each order that was accepted (has an alpaca_order_id),
-             call GET /v2/orders/{id} once and record the fill result.
-          4. Build and return ExecutionResult.
-
-        If Alpaca returns an error or the order has not yet reached 
-        a terminal state, fill_status is set to "pending" and 
-        filled_qty / filled_avg_price remain None. The rebalance record 
-        is still written to the DB so no data is lost.
+        Sells are submitted and polled before buys so that sell proceeds
+        free buying power before buy orders are placed, preventing
+        "insufficient buying power" rejections on paper accounts.
 
         Args:
             deltas: Output of calculator.calculate_deltas() - only non-zero
@@ -141,7 +131,6 @@ class OrderExecutor:
         Returns:
             ExecutionResult with per-order outcomes and a rolled-up status.
         """
-        # Do nothing when delta list is empty
         if not deltas:
             logger.info("No deltas to execute - skipping order submission.")
             return ExecutionResult(
@@ -150,21 +139,27 @@ class OrderExecutor:
                 error_message="No orders submitted: all deltas are zero.",
             )
 
-        # 1. Submit all orders
-        order_results: list[OrderResult] = []
+        sells = [d for d in deltas if d.delta < 0]
+        buys  = [d for d in deltas if d.delta > 0]
 
+        sell_results = self._submit_and_poll(sells)
+        buy_results  = self._submit_and_poll(buys)
+
+        return self._build_execution_result(sell_results + buy_results)
+
+    def _submit_and_poll(self, deltas: list[OrderDelta]) -> list[OrderResult]:
+        """Submit a batch of orders then poll fill status for accepted ones."""
+        if not deltas:
+            return []
+
+        results = []
         for delta in deltas:
-            # Skip any zero-delta entry that should not have been included
             if delta.delta == 0:
                 logger.debug("Skipping zero-delta for %s", delta.symbol)
                 continue
+            results.append(self._submit_order(delta))
 
-            result = self._submit_order(delta)
-            order_results.append(result)
-
-        # 2. Wait for market orders to fill
-        # Only wait when at least one order was successfully accepted.
-        accepted = [r for r in order_results if r.success and r.alpaca_order_id]
+        accepted = [r for r in results if r.success and r.alpaca_order_id]
         if accepted:
             logger.info(
                 "Waiting %.1fs before polling fill status for %d order(s)...",
@@ -172,12 +167,10 @@ class OrderExecutor:
                 len(accepted),
             )
             time.sleep(_FILL_POLL_DELAY_SECONDS)
-
-            # 3. Poll fill status for each accepted order
             for result in accepted:
                 self._poll_fill(result)
 
-        return self._build_execution_result(order_results)
+        return results
 
     # Internal helpers
     def _submit_order(self, delta: OrderDelta) -> OrderResult:

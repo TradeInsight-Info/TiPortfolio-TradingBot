@@ -166,16 +166,22 @@ def fresh_client():
         yield c
 
 
-class TestPortfolioValueCaching:
-    def test_first_call_fetches_equity_from_alpaca(self, fresh_client, mock_alpaca):
+class TestPortfolioEquityAndAudit:
+    def test_every_call_fetches_live_equity(self, fresh_client, mock_alpaca):
         mock_client, _ = mock_alpaca
-        mock_client.get_account_equity.reset_mock()
         post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
-        mock_client.get_account_equity.assert_called_once()
+        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        assert mock_client.get_account_equity.call_count == 2
 
-    def test_second_call_skips_alpaca_equity_fetch(self, fresh_client, mock_alpaca):
+    def test_initial_amount_saved_on_first_call(self, fresh_client, mock_alpaca):
+        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        config = fresh_client.get("/config").get_json()
+        assert config["initial_amount"] == 10_000.0
+
+    def test_initial_amount_not_overwritten_on_second_call(self, fresh_client, mock_alpaca):
         mock_client, _ = mock_alpaca
         post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
-        mock_client.get_account_equity.reset_mock()
+        mock_client.get_account_equity.return_value = 15_000.0
         post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
-        mock_client.get_account_equity.assert_not_called()
+        config = fresh_client.get("/config").get_json()
+        assert config["initial_amount"] == 10_000.0

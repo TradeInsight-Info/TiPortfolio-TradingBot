@@ -283,18 +283,17 @@ def receive_signal():
         logger.error("Alpaca price fetch failed | hash=%s error=%s", payload_hash, exc)
         return jsonify({"error": f"Failed to fetch prices from Alpaca: {exc}"}), 502
 
-    # 4. Resolve portfolio value — use stored initial amount; fetch from Alpaca only on first call
+    # 4. Fetch live account equity for delta calculation
+    try:
+        portfolio_value = alpaca.get_account_equity()
+    except AlpacaError as exc:
+        logger.error("Alpaca account fetch failed | hash=%s error=%s", payload_hash, exc)
+        return jsonify({"error": f"Failed to fetch account equity from Alpaca: {exc}"}), 502
+
+    # Record starting equity once (audit trail only — not used for allocation math)
     config_repo = PortfolioConfigRepository(current_app.config["DB_SESSION"])
-    stored = config_repo.get_initial_amount()
-    if stored is None:
-        try:
-            raw_equity = alpaca.get_account_equity()
-        except AlpacaError as exc:
-            logger.error("Alpaca account fetch failed | hash=%s error=%s", payload_hash, exc)
-            return jsonify({"error": f"Failed to fetch account equity from Alpaca: {exc}"}), 502
-        config_repo.set_initial_amount(Decimal(str(raw_equity)))
-        stored = Decimal(str(raw_equity))
-    portfolio_value = float(stored)
+    if config_repo.get_initial_amount() is None:
+        config_repo.set_initial_amount(Decimal(str(portfolio_value)))
 
     # 5. Calculate share deltas
     try:
