@@ -155,3 +155,27 @@ class TestInvalidPayload:
         # 0.5 + 0.6 = 1.1 → outside ±0.01 tolerance
         res = post_webhook(client, {"weights": {"SPY": 0.5, "QQQ": 0.6}})
         assert res.status_code == 400
+
+
+@pytest.fixture()
+def fresh_client():
+    """Function-scoped client — each test gets a new in-memory DB."""
+    app = create_app()
+    app.config["TESTING"] = True
+    with app.test_client() as c:
+        yield c
+
+
+class TestPortfolioValueCaching:
+    def test_first_call_fetches_equity_from_alpaca(self, fresh_client, mock_alpaca):
+        mock_client, _ = mock_alpaca
+        mock_client.get_account_equity.reset_mock()
+        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        mock_client.get_account_equity.assert_called_once()
+
+    def test_second_call_skips_alpaca_equity_fetch(self, fresh_client, mock_alpaca):
+        mock_client, _ = mock_alpaca
+        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        mock_client.get_account_equity.reset_mock()
+        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        mock_client.get_account_equity.assert_not_called()

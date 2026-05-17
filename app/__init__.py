@@ -2,7 +2,7 @@ import os
 from flask import Flask
 from dotenv import load_dotenv
 from app.database import init_db
-from app import models
+from app import models, portfolio_config  # noqa: F401
 
 load_dotenv()
 
