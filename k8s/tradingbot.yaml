@@ -2,9 +2,9 @@
 # Secrets required in default-secrets:
 #   tiportfolio-alpaca-api-key
 #   tiportfolio-alpaca-api-secret
-#   tiportfolio-db-url
 #   tiportfolio-webhook-secret
-#   tiportfolio-sentry-dsn
+#   tiportfolio-sentry-dsn  (optional)
+# DB password sourced from postgres-secret (db-pass) — shared with cluster PG18.
 
 kind: Deployment
 apiVersion: apps/v1
@@ -54,11 +54,19 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           env:
-            - name: DATABASE_URL
+            - name: DB_HOST
+              value: "postgres18-service"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "tiportfolio"
+            - name: DB_USER
+              value: "postgres"
+            - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: default-secrets
-                  key: tiportfolio-db-url
+                  name: postgres-secret
+                  key: db-pass
             - name: ALPACA_API_KEY
               valueFrom:
                 secretKeyRef:
