@@ -241,14 +241,15 @@ export default function DeltaTable() {
       // Only render the date and status cells on the first order row of each event
       isFirstRow: idx === 0,
       orderCount: event.orders.length,
+      portfolioValue: idx === 0 ? (order.portfolio_value ?? null) : null,
     }));
   });
 
   return (
-    <div className="overflow-x-auto rounded-lg shadow max-w-5xl mx-auto">
+    <div className="overflow-x-auto rounded-lg shadow w-full">
       <table className="table table-zebra w-full">
         <thead>
-          <tr className="bg-base-200 text-base-content text-sm uppercase tracking-wide">
+          <tr className="bg-base-200 text-base-content text-sm uppercase tracking-wide text-center text-wrap">
             <th>Date</th>
             <th>Symbol</th>
             <th>Direction</th>
@@ -257,6 +258,7 @@ export default function DeltaTable() {
             <th>Fill Status</th>
             <th>Filled Qty</th>
             <th>Avg Price</th>
+            <th>Portfolio Value</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -302,6 +304,13 @@ export default function DeltaTable() {
               {/* Average fill price */}
               <td className="tabular-nums">{formatPrice(row.filledAvg)}</td>
 
+              {row.isFirstRow && (
+                <td rowSpan={row.orderCount} className="align-top pt-3 tabular-nums">
+                  {row.portfolioValue != null
+                    ? `$${Number(row.portfolioValue).toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+                    : "—"}
+                </td>
+              )}
               {/* Event-level status badge: only on the first row */}
               {row.isFirstRow && (
                 <td rowSpan={row.orderCount} className="align-top text-center pt-3 font-bold">
