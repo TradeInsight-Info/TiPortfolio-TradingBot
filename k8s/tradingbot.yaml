@@ -1,0 +1,176 @@
+# TiPortfolio Trading Bot — Flask API + daily scheduler CronJob
+# Secrets required in default-secrets:
+#   tiportfolio-alpaca-api-key
+#   tiportfolio-alpaca-api-secret
+#   tiportfolio-db-url
+#   tiportfolio-webhook-secret
+#   tiportfolio-sentry-dsn
+
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: tiportfolio-tradingbot
+  labels:
+    app: tiportfolio-tradingbot
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tiportfolio-tradingbot
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: tiportfolio-tradingbot
+        tier: backend
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      imagePullSecrets:
+        - name: registry-github
+      containers:
+        - name: tradingbot
+          image: ghcr.io/tradeinsight-info/tiportfolio-tradingbot:latest
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          ports:
+            - containerPort: 5000
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: default-secrets
+                  key: tiportfolio-db-url
+            - name: ALPACA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: default-secrets
+                  key: tiportfolio-alpaca-api-key
+            - name: ALPACA_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: default-secrets
+                  key: tiportfolio-alpaca-api-secret
+            - name: ALPACA_MODE
+              value: "paper"
+            - name: WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: default-secrets
+                  key: tiportfolio-webhook-secret
+            - name: ALLOWED_ORIGINS
+              value: "https://sample-strategy.tradeinsight.info"
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: default-secrets
+                  key: tiportfolio-sentry-dsn
+                  optional: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tiportfolio-tradingbot
+  labels:
+    app: tiportfolio-tradingbot
+    tier: backend
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 5000
+  selector:
+    app: tiportfolio-tradingbot
+    tier: backend
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tiportfolio-tradingbot
+  labels:
+    app: tiportfolio-tradingbot
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: default-redirect@kubernetescrd
+spec:
+  rules:
+    - host: ti-bot-api.tradeinsight.info
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tiportfolio-tradingbot
+                port:
+                  number: 5000
+  tls:
+    - hosts:
+        - ti-bot-api.tradeinsight.info
+      secretName: tradeinsight-wildcard-tls
+
+---
+# Runs Mon-Fri at 9:30 AM ET (14:30 UTC)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tiportfolio-scheduler
+  labels:
+    app: tiportfolio-scheduler
+    tier: backend
+spec:
+  schedule: "30 14 * * 1-5"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          imagePullSecrets:
+            - name: registry-github
+          restartPolicy: OnFailure
+          containers:
+            - name: scheduler
+              image: ghcr.io/tradeinsight-info/tiportfolio-scheduler:latest
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "500m"
+              env:
+                - name: TRADING_BOT_WEBHOOK_URL
+                  value: "http://tiportfolio-tradingbot:5000"
+                - name: LOG_LEVEL
+                  value: "INFO"
+                - name: WEBHOOK_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: default-secrets
+                      key: tiportfolio-webhook-secret
