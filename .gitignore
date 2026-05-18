@@ -18,5 +18,5 @@ src/tiportfolio.egg-info/
 htmlcov/
 .ruff_cache/
 k8s/default-secrets.yaml
-.claude/
-.wrangler/
+.claude/sessions/
+.claude/state/
