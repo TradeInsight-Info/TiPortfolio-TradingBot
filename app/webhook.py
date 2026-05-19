@@ -26,6 +26,7 @@ import hmac
 import json
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy.exc import SQLAlchemyError
@@ -33,6 +34,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.alpaca_client import AlpacaClient, AlpacaError
 from app.calculator import calculate_deltas
 from app.order_executor import OrderExecutor
+from app.portfolio_config import PortfolioConfigRepository
 from app.rebalance import RebalanceRepository
 
 logger = logging.getLogger(__name__)
@@ -281,12 +283,17 @@ def receive_signal():
         logger.error("Alpaca price fetch failed | hash=%s error=%s", payload_hash, exc)
         return jsonify({"error": f"Failed to fetch prices from Alpaca: {exc}"}), 502
 
-    # 4. Fetch account equity for delta calculation
+    # 4. Fetch live account equity for delta calculation
     try:
         portfolio_value = alpaca.get_account_equity()
     except AlpacaError as exc:
         logger.error("Alpaca account fetch failed | hash=%s error=%s", payload_hash, exc)
         return jsonify({"error": f"Failed to fetch account equity from Alpaca: {exc}"}), 502
+
+    # Record starting equity once (audit trail only — not used for allocation math)
+    config_repo = PortfolioConfigRepository(current_app.config["DB_SESSION"])
+    if config_repo.get_initial_amount() is None:
+        config_repo.set_initial_amount(Decimal(str(portfolio_value)))
 
     # 5. Calculate share deltas
     try:
@@ -493,3 +500,22 @@ def refresh_fill_status(event_id: int):
         return jsonify({"error": "Failed to update rebalance record."}), 500
 
     return jsonify(_event_to_public_dict(event)), 200
+
+
+@bp.route("/config", methods=["GET"])
+def get_config():
+    """
+    Return the stored initial portfolio amount.
+
+    Responses:
+        200 - {"initial_amount": <value>, "recorded_at": <iso>} when set
+        200 - {"initial_amount": null} when not yet recorded
+    """
+    config_repo = PortfolioConfigRepository(current_app.config["DB_SESSION"])
+    row = config_repo.get()
+    if row is None:
+        return jsonify({"initial_amount": None}), 200
+    return jsonify({
+        "initial_amount": float(row.initial_amount),
+        "recorded_at":    row.recorded_at.isoformat(),
+    }), 200

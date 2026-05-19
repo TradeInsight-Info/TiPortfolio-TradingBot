@@ -155,3 +155,33 @@ class TestInvalidPayload:
         # 0.5 + 0.6 = 1.1 → outside ±0.01 tolerance
         res = post_webhook(client, {"weights": {"SPY": 0.5, "QQQ": 0.6}})
         assert res.status_code == 400
+
+
+@pytest.fixture()
+def fresh_client():
+    """Function-scoped client — each test gets a new in-memory DB."""
+    app = create_app()
+    app.config["TESTING"] = True
+    with app.test_client() as c:
+        yield c
+
+
+class TestPortfolioEquityAndAudit:
+    def test_every_call_fetches_live_equity(self, fresh_client, mock_alpaca):
+        mock_client, _ = mock_alpaca
+        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        assert mock_client.get_account_equity.call_count == 2
+
+    def test_initial_amount_saved_on_first_call(self, fresh_client, mock_alpaca):
+        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        config = fresh_client.get("/config").get_json()
+        assert config["initial_amount"] == 10_000.0
+
+    def test_initial_amount_not_overwritten_on_second_call(self, fresh_client, mock_alpaca):
+        mock_client, _ = mock_alpaca
+        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        mock_client.get_account_equity.return_value = 15_000.0
+        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        config = fresh_client.get("/config").get_json()
+        assert config["initial_amount"] == 10_000.0

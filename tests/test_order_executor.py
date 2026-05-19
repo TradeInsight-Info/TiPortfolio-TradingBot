@@ -18,11 +18,24 @@ from app.order_executor import (
 # Shared fixtures
 BASE_URL = "https://paper-api.alpaca.markets"
 
+
+@pytest.fixture(autouse=True)
+def no_sleep(monkeypatch):
+    monkeypatch.setattr("app.order_executor.time.sleep", lambda *_: None)
+
+
 def make_executor() -> OrderExecutor:
+    mock_client = MagicMock()
+    mock_client.get_order.return_value = {
+        "status": "filled",
+        "filled_qty": "5",
+        "filled_avg_price": "100.0",
+    }
     return OrderExecutor(
         api_key="test-key",
         api_secret="test-secret",
         base_url=BASE_URL,
+        alpaca_client=mock_client,
     )
 
 def make_delta(symbol: str, delta: int) -> OrderDelta:
@@ -201,11 +214,11 @@ class TestAllSuccessStatus:
 class TestPartialFailure:
     def test_one_failure_does_not_abort_remaining_orders(self):
         """
-        Orders: SPY (fail), QQQ (success), GLD (success).
-        All three POST calls must be made despite SPY failing.
+        Sells run first: QQQ (fail). Buys run after: SPY (success), GLD (success).
+        All three POST calls must be made despite QQQ sell failing.
         """
         fail_resp  = mock_error_response(422, "insufficient funds")
-        ok_resp    = mock_alpaca_response("ok-qqq")
+        ok_resp    = mock_alpaca_response("ok-spy")
         ok_resp2   = mock_alpaca_response("ok-gld")
 
         with patch(
@@ -325,3 +338,41 @@ class TestHttpErrorCodes:
         order = result.orders[0]
         assert order.success is False
         assert str(status_code) in order.error
+
+
+# Sell-before-buy ordering
+class TestSellBeforeBuy:
+    def test_sells_submitted_before_buys(self):
+        """All sell orders must be submitted before any buy order."""
+        ok_resp = mock_alpaca_response("order-id")
+        submitted_sides: list[str] = []
+
+        def capture_side(url, **kwargs):
+            submitted_sides.append(kwargs["json"]["side"])
+            return ok_resp
+
+        with patch("app.order_executor.requests.post", side_effect=capture_side):
+            make_executor().execute([
+                make_delta("SPY", 5),   # buy
+                make_delta("QQQ", -3),  # sell
+                make_delta("GLD", 2),   # buy
+            ])
+
+        sell_indices = [i for i, s in enumerate(submitted_sides) if s == "sell"]
+        buy_indices  = [i for i, s in enumerate(submitted_sides) if s == "buy"]
+        assert sell_indices and buy_indices
+        assert max(sell_indices) < min(buy_indices)
+
+    def test_pure_sell_list_executes_without_buys(self):
+        ok_resp = mock_alpaca_response("sell-only")
+        with patch("app.order_executor.requests.post", return_value=ok_resp) as mock_post:
+            result = make_executor().execute([make_delta("SPY", -3)])
+        assert result.status == "success"
+        assert mock_post.call_count == 1
+
+    def test_pure_buy_list_executes_without_sells(self):
+        ok_resp = mock_alpaca_response("buy-only")
+        with patch("app.order_executor.requests.post", return_value=ok_resp) as mock_post:
+            result = make_executor().execute([make_delta("SPY", 4)])
+        assert result.status == "success"
+        assert mock_post.call_count == 1

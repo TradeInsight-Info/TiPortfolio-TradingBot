@@ -17,6 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 logger = logging.getLogger(__name__)
 bp = Blueprint("main", __name__)
 
+@bp.route("/healthz", methods=["GET"])
 @bp.route("/health", methods=["GET"])
 def health():
     """
