@@ -1,6 +1,6 @@
 """
-25 — Run VIX#2 Ratio Strategy and POST Target Weights to TradingBot Webhook
-============================================================================
+Market VIX Rebalance — Run VIX#2 Ratio Strategy and POST Target Weights to TradingBot Webhook
+==============================================================================================
 
 Runs the *winner* from the VIX-regime parameter sweep (see Plans.md Archive)
 and ships the latest target weights to the TiPortfolio-TradingBot webhook so
@@ -20,9 +20,8 @@ Webhook contract (TiPortfolio-TradingBot/app/webhook.py):
   Returns: 202 Accepted (or 400 / 502 with `error`)
 
 Usage:
-  uv run python playground/25_run_strategy_send_webhook.py            # live → webhook
-  uv run python playground/25_run_strategy_send_webhook.py --dry-run  # print only
-  uv run python playground/25_run_strategy_send_webhook.py --csv      # use bundled CSV
+  uv run python scheduler/strategies/market_vix_rebalance.py            # live → webhook
+  uv run python scheduler/strategies/market_vix_rebalance.py --dry-run  # print only
 
 Env:
   TRADING_BOT_WEBHOOK_URL  base URL of the bot, default http://localhost:5000
@@ -36,7 +35,6 @@ import os
 import sys
 from dataclasses import dataclass
 from datetime import date, timedelta
-from pathlib import Path
 
 import pandas as pd
 import requests
@@ -59,14 +57,6 @@ VIX_LOW = 20
 
 DEFAULT_LOOKBACK_YEARS = 2  # plenty of history for the VIX gate to settle
 DEFAULT_WEBHOOK_BASE = "http://localhost:5000"
-
-_DATA_DIR = Path(__file__).resolve().parent.parent / "tests" / "data"
-CSV_DATA: dict[str, str] = {
-    "QQQ":  str(_DATA_DIR / "qqq_2018_2024_yf.csv"),
-    "BIL":  str(_DATA_DIR / "bil_2018_2024_yf.csv"),
-    "GLD":  str(_DATA_DIR / "gld_2018_2024_yf.csv"),
-    "^VIX": str(_DATA_DIR / "vix_2018_2024_yf.csv"),
-}
 
 
 @dataclass(frozen=True)
@@ -113,20 +103,11 @@ def build_portfolio(vix_data: dict) -> ti.Portfolio:
     )
 
 
-def run_strategy(start: str, end: str, use_csv: bool) -> StrategyOutput:
+def run_strategy(start: str, end: str) -> StrategyOutput:
     """Backtest the strategy and return the most recent target weights."""
-    if use_csv:
-        missing = [k for k, p in CSV_DATA.items() if not Path(p).exists()]
-        if missing:
-            raise FileNotFoundError(
-                f"CSV files not found for {missing}. "
-                "--csv is only available in local development, not inside Docker."
-            )
-    csv = CSV_DATA if use_csv else None
-
-    logger.info("Fetching market data %s → %s (csv=%s)", start, end, bool(csv))
-    data = ti.fetch_data(TICKERS, start=start, end=end, csv=csv)
-    vix_data = ti.fetch_data(["^VIX"], start=start, end=end, csv=csv)
+    logger.info("Fetching market data %s → %s", start, end)
+    data = ti.fetch_data(TICKERS, start=start, end=end)
+    vix_data = ti.fetch_data(["^VIX"], start=start, end=end)
 
     portfolio = build_portfolio(vix_data)
     result = ti.run(ti.Backtest(portfolio, data))
@@ -203,8 +184,11 @@ def send_webhook(base_url: str, weights: dict[str, float], timeout: float = 10.0
     url = base_url.rstrip("/") + "/webhook"
     payload = {"weights": weights}
 
+    secret = os.environ.get("WEBHOOK_SECRET", "")
+    headers = {"Authorization": f"Bearer {secret}"} if secret else {}
+
     logger.info("POST %s | payload=%s", url, payload)
-    resp = requests.post(url, json=payload, timeout=timeout)
+    resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
 
     try:
         body = resp.json()
@@ -232,7 +216,6 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--start", default=default_start.isoformat(), help="Backtest start date (YYYY-MM-DD)")
     p.add_argument("--end", default=today.isoformat(), help="Backtest end date (YYYY-MM-DD)")
-    p.add_argument("--csv", action="store_true", help="Use bundled CSV instead of yfinance live data")
     p.add_argument("--dry-run", action="store_true", help="Run strategy and print weights, but don't POST")
     p.add_argument(
         "--webhook",
@@ -249,7 +232,7 @@ def main() -> int:
     )
     args = _parse_args()
 
-    output = run_strategy(start=args.start, end=args.end, use_csv=args.csv)
+    output = run_strategy(start=args.start, end=args.end)
 
     print()
     print(f"Latest rebalance date : {output.rebalance_date.date()}")
