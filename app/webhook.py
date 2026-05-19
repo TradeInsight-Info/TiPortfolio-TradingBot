@@ -22,6 +22,7 @@ Return:
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 from datetime import datetime, timezone
@@ -48,6 +49,29 @@ _TERMINAL_FILL_STATUSES = frozenset({
     "rejected",
     "done_for_day",
 })
+
+def _verify_bearer_token(req) -> bool:
+    """
+    Extract and validate the Bearer token from the Authorization header.
+
+    Returns True only when the header is present, well-formed, and the
+    token matches WEBHOOK_SECRET from Flask config.
+
+    Avoids any string that could leak the secret into logs
+    or error responses.
+    """
+    auth_header = req.headers.get("Authorization", "")
+
+    # Header must follow the exact format: "Bearer <token>"
+    if not auth_header.startswith("Bearer "):
+        return False
+
+    # Extract the token portion after "Bearer "
+    provided_token = auth_header[len("Bearer "):]
+    expected_token = current_app.config.get("WEBHOOK_SECRET", "")
+
+    # Use constant-time comparison to prevent timing attacks
+    return hmac.compare_digest(provided_token, expected_token)
 
 def _payload_hash(data: dict) -> str:
     """
@@ -192,14 +216,26 @@ def receive_signal():
     Accept a target-portfolio signal, execute the rebalance, and persist the
     full audit record to the database.
 
+    Authentication:
+        Requires 'Authorization: Bearer <token>' header.
+        Token must match WEBHOOK_SECRET env var.
+        The secret is never logged or included in any response body.
+    
     Expected body:
         {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}}
 
     Responses:
         202 Accepted - rebalance attempted; record saved; record returned in body.
         400 Bad Request - payload is malformed or weights are invalid.
+        401 Unauthorized - missing or invalid Authorization header.
         502 Bad Gateway - Alpaca API is unreachable.
     """
+    # Check authentication before touching the payload
+    if not _verify_bearer_token(request):
+        # Log only that auth failed, never log the provided token value
+        logger.warning("Webhook request rejected: invalid or missing Bearer token.")
+        return jsonify({"error": "Unauthorized."}), 401
+
     received_at = datetime.now(timezone.utc)
 
     # 1. Parse JSON
