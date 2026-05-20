@@ -25,6 +25,7 @@ import pandas as pd
 import yfinance as yf
 from flask import Blueprint, current_app, jsonify, request
 
+from app.portfolio_config import PortfolioConfigRepository
 from app.rebalance import RebalanceRepository
 
 logger = logging.getLogger(__name__)
@@ -237,12 +238,16 @@ def get_benchmark():
 
     repo = RebalanceRepository(current_app.config["DB_SESSION"])
     events = repo.get_all()  # newest-first
-
-    if not events:
-        return jsonify({"no_data": True}), 200
-
     events_asc = sorted(events, key=lambda e: e.timestamp)
-    first_date = _nearest_trading_day(events_asc[0].timestamp.date())
+
+    if events_asc:
+        first_date = _nearest_trading_day(events_asc[0].timestamp.date())
+    else:
+        config_repo = PortfolioConfigRepository(current_app.config["DB_SESSION"])
+        config_row = config_repo.get()
+        if config_row is None:
+            return jsonify({"no_data": True}), 200
+        first_date = _nearest_trading_day(config_row.recorded_at.date())
     today      = _nearest_trading_day(date.today())
     # end must be at least one day after start so yfinance has a valid range
     end_date   = today + timedelta(days=1)
