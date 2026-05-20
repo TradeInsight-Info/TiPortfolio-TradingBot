@@ -31,7 +31,7 @@ spec:
         - name: registry-github
       containers:
         - name: tradingbot
-          image: ghcr.io/tradeinsight-info/tiportfolio-tradingbot:sha-de7176e
+          image: ghcr.io/tradeinsight-info/tiportfolio-tradingbot:sha-98920a2
           resources:
             requests:
               memory: "32Mi"
@@ -164,7 +164,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: scheduler
-              image: ghcr.io/tradeinsight-info/tiportfolio-scheduler:sha-de7176e
+              image: ghcr.io/tradeinsight-info/tiportfolio-scheduler:sha-98920a2
               resources:
                 requests:
                   memory: "64Mi"
