@@ -34,7 +34,7 @@ export function useBenchmark(ticker) {
       setData(json);
       
       // Only cache non-empty, data-bearing responses
-      if (!json.nodata) {
+      if (!json.no_data) {
         writeCache(key, json);
       }
     } catch (err) {

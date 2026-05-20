@@ -31,7 +31,7 @@ spec:
         - name: registry-github
       containers:
         - name: tradingbot
-          image: ghcr.io/tradeinsight-info/tiportfolio-tradingbot:sha-31e49c8
+          image: ghcr.io/tradeinsight-info/tiportfolio-tradingbot:sha-de7176e
           resources:
             requests:
               memory: "32Mi"
@@ -139,7 +139,7 @@ spec:
       secretName: tradeinsight-wildcard-tls
 
 ---
-# Runs Mon-Fri at 9:30 AM ET (14:30 UTC)
+# Runs Mon-Fri at 9:40 AM ET
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -148,7 +148,7 @@ metadata:
     app: tiportfolio-scheduler
     tier: backend
 spec:
-  schedule: "30 14 * * 1-5"
+  schedule: "40 9 * * 1-5"
   timeZone: "America/New_York"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
@@ -164,7 +164,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: scheduler
-              image: ghcr.io/tradeinsight-info/tiportfolio-scheduler:latest
+              image: ghcr.io/tradeinsight-info/tiportfolio-scheduler:sha-de7176e
               resources:
                 requests:
                   memory: "64Mi"
