@@ -3,12 +3,44 @@ name: Deploy Frontend to Cloudflare Pages
 on:
   push:
     branches: [master]
-    paths:
-      - frontend/**
   workflow_dispatch:
 
 jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend_changed: ${{ steps.diff.outputs.frontend_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: diff
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "frontend_changed=true" >> $GITHUB_OUTPUT
+          elif git diff --name-only HEAD~1 HEAD | grep -q '^frontend/'; then
+            echo "frontend_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "frontend_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+  approve:
+    needs: check-changes
+    if: needs.check-changes.outputs.frontend_changed == 'false'
+    runs-on: ubuntu-latest
+    environment: deploy-approval
+    steps:
+      - run: echo "Deployment approved for non-frontend change"
+
   deploy:
+    needs: [check-changes, approve]
+    if: |
+      always() &&
+      needs.check-changes.result == 'success' &&
+      (
+        needs.check-changes.outputs.frontend_changed == 'true' ||
+        needs.approve.result == 'success'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
