@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { cacheKey, readCache, writeCache, clearCache } from '../utils/cache';
 
+// In dev, Vite proxies /api → localhost:5000. In prod (Cloudflare Pages),
+// VITE_API_BASE_URL points directly at the Flask host (no /api prefix on Flask).
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const CACHE_KEY = cacheKey('delta');
 
 export function useDelta() {  
@@ -26,11 +29,10 @@ export function useDelta() {
       // Build the incremental URL: if we have cached data, ask for newer records
       const latestTimestamp = (!cacheIsStale && cached?.latestTimestamp) ? cached.latestTimestamp : null;
       const url = latestTimestamp
-        ? `/api/delta?since=${encodeURIComponent(latestTimestamp)}`
-        : '/api/delta';
-      
+        ? `${API_BASE}/delta?since=${encodeURIComponent(latestTimestamp)}`
+        : `${API_BASE}/delta`;
+
       try {
-        // Vite proxy handles routing
         const response = await fetch(url);
 
         // Read the body ONCE as JSON regardless of status
@@ -55,7 +57,7 @@ export function useDelta() {
 
         const incoming = data.events ?? [];
 
-        // When cache was stale, we did a full fetch (/api/delta with no ?since).
+        // When cache was stale, we did a full fetch (/delta with no ?since).
         // incoming already contains ALL events in the new format (with id + fill fields).
         // Do NOT merge with stale cache - mergeEvents deduplicates by timestamp,
         // which would discard all incoming events and keep the old id-less data.
@@ -105,7 +107,7 @@ export function useDelta() {
    */
   const refreshEvent = useCallback(async (eventId) => {
     try {
-      const response = await fetch(`/api/delta/${eventId}/refresh`, {
+      const response = await fetch(`${API_BASE}/delta/${eventId}/refresh`, {
         method: "POST",
       });
       const data = await response.json();
