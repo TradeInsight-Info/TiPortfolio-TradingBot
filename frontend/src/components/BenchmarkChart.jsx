@@ -81,8 +81,9 @@ export default function BenchmarkChart() {
     );
   }
 
-  const merged = mergeSeries(spy.data.bot, spy.data.benchmark, qqq.data.benchmark);
+  const merged = mergeSeries(spy.data.bot ?? [], spy.data.benchmark, qqq.data.benchmark);
   const chartData = scaleToUsd(merged, config.initialAmount);
+  const hasBot = merged.some(d => d.bot != null);
 
   return (
     <div>
@@ -113,15 +114,17 @@ export default function BenchmarkChart() {
 
           <Legend formatter={(value) => LABEL[value] ?? value} />
 
-          <Line
-            type="monotone"
-            dataKey="bot"
-            stroke="#6366f1"
-            strokeWidth={2}
-            dot={false}
-            activeDot={{ r: 4 }}
-            connectNulls
-          />
+          {hasBot && (
+            <Line
+              type="monotone"
+              dataKey="bot"
+              stroke="#6366f1"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4 }}
+              connectNulls
+            />
+          )}
           <Line
             type="monotone"
             dataKey="spy"
@@ -147,7 +150,8 @@ export default function BenchmarkChart() {
 
       <p className="text-xs text-gray-400 mt-2 text-right">
         Portfolio value (USD, log scale); seeded with {formatUsd(config.initialAmount)} on{" "}
-        {spy.data.first_rebalance_date}.
+        {spy.data.first_rebalance_date}
+        {!hasBot && " — bot line appears after first rebalance"}.
       </p>
     </div>
   );
