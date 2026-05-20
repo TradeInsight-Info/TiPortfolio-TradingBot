@@ -22,7 +22,6 @@ Return:
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import logging
 from datetime import datetime, timezone
@@ -51,29 +50,6 @@ _TERMINAL_FILL_STATUSES = frozenset({
     "rejected",
     "done_for_day",
 })
-
-def _verify_bearer_token(req) -> bool:
-    """
-    Extract and validate the Bearer token from the Authorization header.
-
-    Returns True only when the header is present, well-formed, and the
-    token matches WEBHOOK_SECRET from Flask config.
-
-    Avoids any string that could leak the secret into logs
-    or error responses.
-    """
-    auth_header = req.headers.get("Authorization", "")
-
-    # Header must follow the exact format: "Bearer <token>"
-    if not auth_header.startswith("Bearer "):
-        return False
-
-    # Extract the token portion after "Bearer "
-    provided_token = auth_header[len("Bearer "):]
-    expected_token = current_app.config.get("WEBHOOK_SECRET", "")
-
-    # Use constant-time comparison to prevent timing attacks
-    return hmac.compare_digest(provided_token, expected_token)
 
 def _payload_hash(data: dict) -> str:
     """
