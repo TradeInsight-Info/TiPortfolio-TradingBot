@@ -4,7 +4,6 @@ import DeltaTable from "./components/DeltaTable";
 import IntroSection from "./components/IntroSection";
 
 function App() {
-  const [ticker, setTicker] = useState("SPY");
   const [activeSection, setActiveSection] = useState("intro");
 
   useEffect(() => {
@@ -66,7 +65,7 @@ function App() {
           Cumulative return of the bot vs. market benchmarks, indexed from the
           first rebalance date.
         </p>
-        <BenchmarkChart ticker={ticker} onTickerChange={setTicker} />
+        <BenchmarkChart />
       </section>
     </>
   );
