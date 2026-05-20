@@ -10,7 +10,41 @@ env:
   OWNER: ${{ github.repository_owner }}
 
 jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      py_changed: ${{ steps.diff.outputs.py_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: diff
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "py_changed=true" >> $GITHUB_OUTPUT
+          elif git diff --name-only HEAD~1 HEAD | grep -q '\.py$'; then
+            echo "py_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "py_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+  approve:
+    needs: check-changes
+    if: needs.check-changes.outputs.py_changed == 'false'
+    runs-on: ubuntu-latest
+    environment: deploy-approval
+    steps:
+      - run: echo "Deployment approved for non-Python change"
+
   build-and-push:
+    needs: [check-changes, approve]
+    if: |
+      always() &&
+      needs.check-changes.result == 'success' &&
+      (
+        needs.check-changes.outputs.py_changed == 'true' ||
+        needs.approve.result == 'success'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
