@@ -153,9 +153,26 @@ Three components, surgical replacements only:
 **Touched files:**
 
 - `frontend/src/App.jsx` — nav classes, dark mode `<html>` toggle
-- `frontend/src/components/IntroSection.jsx` — button classes
-- `frontend/src/components/DeltaTable.jsx` — table surface (grep and replace)
+- `frontend/src/components/IntroSection.jsx` — `btn btn-primary` / `btn btn-outline` → utility classes per table above
+- `frontend/src/components/DeltaTable.jsx` — heavy daisyUI usage (see detailed map below)
 - `frontend/src/components/BenchmarkChart.jsx` — stroke colours should use `var(--chart-2)` (Bot), `var(--chart-3)` (SPY), `var(--chart-1)` (QQQ) so they follow the dark/light palette
+
+**DeltaTable daisyUI → utility map (complete):**
+
+| daisyUI class | Replacement |
+|---|---|
+| `table table-zebra` | `w-full text-sm border-collapse` + manual `odd:bg-muted/30` on `<tr>` |
+| `bg-base-200 text-base-content` | `bg-muted text-muted-foreground` |
+| `hover` (tr) | `hover:bg-accent/50 transition-colors` |
+| `badge badge-sm badge-soft badge-success` | `inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200` |
+| `badge-warning` | yellow equivalent: `bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200` |
+| `badge-error` | red: `bg-destructive/10 text-destructive` |
+| `badge-primary` | emerald: `bg-primary/10 text-primary` |
+| `badge-info` | blue: `bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200` |
+| `loading loading-spinner loading-lg` | Replace with a simple CSS-animated SVG spinner or `animate-spin` border div |
+| `loading loading-spinner loading-xs` | Same — inline size variant |
+| `btn btn-xs btn-outline btn-warning` | `inline-flex items-center rounded px-2 py-1 text-xs border border-yellow-500 text-yellow-600 hover:bg-yellow-50 transition-colors` |
+| `alert alert-error` | `flex items-center gap-2 rounded-lg border border-destructive bg-destructive/10 text-destructive px-4 py-3` |
 
 ### Section 4 — Dark mode
 
@@ -181,20 +198,31 @@ Call it once in `App.jsx` — no toggle UI required in v1 (system preference onl
 
 **SVG construction (`logo.svg`, 256×256):**
 
-```
-<rect x="0" y="0" width="256" height="256" rx="40" fill="#065f46"/>
-<!-- faint rising diagonal -->
-<line x1="40" y1="200" x2="216" y2="72" stroke="#6ee7b7" stroke-width="12"
-      stroke-linecap="round" opacity="0.35"/>
-<!-- "T" glyph — converted to path, Inter Bold 140px -->
-<path d="…" fill="#ffffff"/>
-<!-- "i" body — converted to path -->
-<path d="…" fill="#ffffff"/>
-<!-- "i" dot replaced with emerald bar -->
-<rect x="152" y="58" width="20" height="20" rx="4" fill="#6ee7b7"/>
+The skeleton below uses literal geometry for background, line, and dot; the "Ti" glyph must come from a design tool (Figma, Illustrator, Inkscape) with the text converted to paths. No text/font elements in the committed SVG.
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Rounded-square background -->
+  <rect x="0" y="0" width="256" height="256" rx="40" ry="40" fill="#065f46"/>
+
+  <!-- Faint rising diagonal (chart-line motif) -->
+  <line x1="40" y1="200" x2="216" y2="72"
+        stroke="#6ee7b7" stroke-width="12" stroke-linecap="round" opacity="0.35"/>
+
+  <!-- "Ti" monogram — REPLACE these rects with actual converted-path data -->
+  <!-- Placeholder outline boxes show intended glyph bounding areas: -->
+  <!-- T: ~x=58,y=70 w=85,h=130 -->
+  <!-- i body: ~x=150,y=100 w=24,h=100 -->
+  <!-- All paths fill="#ffffff" -->
+
+  <!-- "i" dot replaced with emerald accent bar -->
+  <rect x="152" y="58" width="22" height="22" rx="5" ry="5" fill="#6ee7b7"/>
+</svg>
 ```
 
-Glyphs MUST be converted to paths before shipping (no font dependency in the SVG).
+**Workflow for glyph paths:** Set "Ti" in Inter Bold 140px in Figma/Inkscape, position the T so its left serif starts at ~x=58 and the i's body starts at ~x=150. Delete the "i" dot (replaced by the emerald rect above). Export text as SVG path outlines. Paste resulting `<path d="...">` elements into the skeleton above, removing the placeholder comment.
+
+Glyphs MUST be converted to paths before committing (no `<text>` or `<font>` elements in the final SVG).
 
 **Assets to produce:**
 
