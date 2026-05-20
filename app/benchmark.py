@@ -25,11 +25,16 @@ import pandas as pd
 import yfinance as yf
 from flask import Blueprint, current_app, jsonify, request
 
+from app.alpaca_client import AlpacaClient, AlpacaError
 from app.portfolio_config import PortfolioConfigRepository
 from app.rebalance import RebalanceRepository
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("benchmark", __name__)
+
+# Cache Alpaca portfolio history per (fetch_date, start_date) to avoid
+# hitting the Alpaca API on every chart load.
+_portfolio_hist_cache: dict[tuple, list] = {}
 
 # Supported tickers
 SUPPORTED_TICKERS = {"SPY", "QQQ", "QQQ+GLD+BIL"}
@@ -210,6 +215,36 @@ def _bot_equity_curve(events: list, prices: pd.DataFrame) -> pd.Series:
     return cumulative
 
 
+def _alpaca_equity_curve(first_date: date) -> pd.Series:
+    """
+    Fetch Alpaca portfolio history and return a Series normalised to 1.0
+    at the first data point. Used when no rebalance events exist.
+    Returns an empty Series if the fetch fails or returns no data.
+    """
+    cache_key = (date.today(), first_date)
+    if cache_key not in _portfolio_hist_cache:
+        try:
+            client = AlpacaClient(
+                api_key=current_app.config["ALPACA_API_KEY"],
+                api_secret=current_app.config["ALPACA_API_SECRET"],
+                mode=current_app.config["ALPACA_MODE"],
+            )
+            _portfolio_hist_cache[cache_key] = client.get_portfolio_history(first_date)
+        except AlpacaError as exc:
+            logger.warning("Alpaca portfolio history unavailable: %s", exc)
+            return pd.Series(dtype=float)
+
+    history = _portfolio_hist_cache[cache_key]
+    if not history or history[0]["equity"] == 0:
+        return pd.Series(dtype=float)
+
+    start_equity = history[0]["equity"]
+    return pd.Series(
+        [h["equity"] / start_equity for h in history],
+        index=pd.to_datetime([h["date"] for h in history]),
+    )
+
+
 @bp.route("/benchmark", methods=["GET"])
 def get_benchmark():
     """
@@ -276,7 +311,7 @@ def get_benchmark():
         return jsonify({"no_data": True}), 200
 
     bench = _benchmark_curve(raw_ticker, prices, first_date)
-    bot   = _bot_equity_curve(events_asc, prices)
+    bot   = _bot_equity_curve(events_asc, prices) if events_asc else _alpaca_equity_curve(first_date)
 
     def _to_list(series: pd.Series) -> list[dict]:
         return [
