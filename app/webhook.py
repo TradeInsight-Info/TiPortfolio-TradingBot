@@ -229,14 +229,12 @@ def receive_signal():
     Responses:
         202 Accepted - rebalance attempted; record saved; record returned in body.
         400 Bad Request - payload is malformed or weights are invalid.
-        401 Unauthorized - missing or invalid Authorization header.
+        401 Unauthorized - WEBHOOK_SECRET configured and Authorization header is missing or wrong.
         502 Bad Gateway - Alpaca API is unreachable.
     """
-    # Check authentication before touching the payload
-    if not _verify_bearer_token(request):
-        # Log only that auth failed, never log the provided token value
-        logger.warning("Webhook request rejected: invalid or missing Bearer token.")
-        return jsonify({"error": "Unauthorized."}), 401
+    secret = current_app.config.get("WEBHOOK_SECRET")
+    if secret and request.headers.get("Authorization") != f"Bearer {secret}":
+        return jsonify({"error": "Unauthorized"}), 401
 
     received_at = datetime.now(timezone.utc)
 
