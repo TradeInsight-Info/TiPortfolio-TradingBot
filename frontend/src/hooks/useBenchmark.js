@@ -21,12 +21,17 @@ export function useBenchmark(ticker) {
 
     try {
       const response = await fetch(`${API_BASE}/benchmark?ticker=${encodedTicker}`);
-      const json = await response.json();
 
       if (!response.ok) {
-        // Server returned 4xx/5xx; use the error message from the body
-        throw new Error(json.error ?? `Server returned ${response.status}`);
+        let message = `Server returned ${response.status}`;
+        try {
+          const body = await response.json();
+          message = body.error ?? message;
+        } catch (_) { /* body wasn't JSON */ }
+        throw new Error(message);
       }
+
+      const json = await response.json();
 
       // If the server signals a schema change, wipe the stale cache entry
       if (json.full_refresh) {
