@@ -1,2 +1,6 @@
 @import "tailwindcss";
 @import "daisyui/daisyui.css";
+
+html {
+  scroll-behavior: smooth;
+}
