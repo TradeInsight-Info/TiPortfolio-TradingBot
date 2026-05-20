@@ -1,4 +1,5 @@
 import { useBenchmark } from "../hooks/useBenchmark";
+import { useConfig } from "../hooks/useConfig";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
@@ -6,9 +7,15 @@ import {
 
 const LABEL = { bot: "Bot", spy: "SPY", qqq: "QQQ" };
 
-function formatPct(value) {
+const usd = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+});
+
+function formatUsd(value) {
   if (value == null) return "—";
-  return `${((value - 1) * 100).toFixed(2)}%`;
+  return usd.format(value);
 }
 
 // Merge bot + two benchmark series into a single array keyed by date
@@ -28,13 +35,23 @@ function mergeSeries(botArr, spyArr, qqqArr) {
   return Object.values(map).sort((a, b) => (a.date > b.date ? 1 : -1));
 }
 
+function scaleToUsd(rows, initialAmount) {
+  return rows.map((d) => ({
+    date: d.date,
+    bot: d.bot != null ? d.bot * initialAmount : undefined,
+    spy: d.spy != null ? d.spy * initialAmount : undefined,
+    qqq: d.qqq != null ? d.qqq * initialAmount : undefined,
+  }));
+}
+
 export default function BenchmarkChart() {
   const spy = useBenchmark("SPY");
   const qqq = useBenchmark("QQQ");
+  const config = useConfig();
 
-  const loading = spy.loading || qqq.loading;
-  const error = spy.error || qqq.error;
-  const noData = spy.data?.no_data || qqq.data?.no_data;
+  const loading = spy.loading || qqq.loading || config.loading;
+  const error = spy.error || qqq.error || config.error;
+  const noData = spy.data?.no_data || qqq.data?.no_data || config.initialAmount === null;
 
   if (loading) {
     return (
@@ -64,7 +81,8 @@ export default function BenchmarkChart() {
     );
   }
 
-  const chartData = mergeSeries(spy.data.bot, spy.data.benchmark, qqq.data.benchmark);
+  const merged = mergeSeries(spy.data.bot, spy.data.benchmark, qqq.data.benchmark);
+  const chartData = scaleToUsd(merged, config.initialAmount);
 
   return (
     <div>
@@ -80,13 +98,16 @@ export default function BenchmarkChart() {
           />
 
           <YAxis
-            tickFormatter={(v) => `${((v - 1) * 100).toFixed(0)}%`}
+            scale="log"
+            domain={['auto', 'auto']}
+            allowDataOverflow
+            tickFormatter={formatUsd}
             tick={{ fontSize: 12 }}
-            width={55}
+            width={80}
           />
 
           <Tooltip
-            formatter={(value, name) => [formatPct(value), LABEL[name] ?? name]}
+            formatter={(value, name) => [formatUsd(value), LABEL[name] ?? name]}
             labelFormatter={(label) => `Date: ${label}`}
           />
 
@@ -99,6 +120,7 @@ export default function BenchmarkChart() {
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4 }}
+            connectNulls
           />
           <Line
             type="monotone"
@@ -108,6 +130,7 @@ export default function BenchmarkChart() {
             dot={false}
             strokeDasharray="5 5"
             activeDot={{ r: 4 }}
+            connectNulls
           />
           <Line
             type="monotone"
@@ -117,13 +140,14 @@ export default function BenchmarkChart() {
             dot={false}
             strokeDasharray="3 3"
             activeDot={{ r: 4 }}
+            connectNulls
           />
         </LineChart>
       </ResponsiveContainer>
 
       <p className="text-xs text-gray-400 mt-2 text-right">
-        Indexed to 1.0 at first rebalance ({spy.data.first_rebalance_date}).
-        Y-axis shows cumulative return (%).
+        Portfolio value (USD, log scale); seeded with {formatUsd(config.initialAmount)} on{" "}
+        {spy.data.first_rebalance_date}.
       </p>
     </div>
   );
