@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { cacheKey, readCache, writeCache, clearCache } from '../utils/cache';
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
+
 export function useBenchmark(ticker) {
   const key = cacheKey('benchmark', ticker);
 
@@ -18,7 +20,7 @@ export function useBenchmark(ticker) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/benchmark?ticker=${encodedTicker}`);
+      const response = await fetch(`${API_BASE}/benchmark?ticker=${encodedTicker}`);
       const json = await response.json();
 
       if (!response.ok) {
