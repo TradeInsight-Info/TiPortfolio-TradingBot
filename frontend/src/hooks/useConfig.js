@@ -13,11 +13,17 @@ export function useConfig() {
     async function fetchConfig() {
       try {
         const response = await fetch(`${API_BASE}/config`);
-        const json = await response.json();
 
         if (!response.ok) {
-          throw new Error(json.error ?? `Server returned ${response.status}`);
+          let message = `Server returned ${response.status}`;
+          try {
+            const body = await response.json();
+            message = body.error ?? message;
+          } catch (_) { /* body wasn't JSON */ }
+          throw new Error(message);
         }
+
+        const json = await response.json();
 
         if (!cancelled) {
           setInitialAmount(json.initial_amount !== null ? Number(json.initial_amount) : null);
