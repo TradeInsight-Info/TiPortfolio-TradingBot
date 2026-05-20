@@ -1,3 +1,11 @@
+# TiPortfolio Frontend
+
+Live site: https://tiportfolio-demo.tradeinsight.info
+
+Portfolio optimisation dashboard for TiPortfolio-TradingBot. Deployed automatically to Cloudflare Pages on push to `master`.
+
+---
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
