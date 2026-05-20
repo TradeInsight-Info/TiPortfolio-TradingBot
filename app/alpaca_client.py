@@ -15,6 +15,7 @@ Responsibilities:
 from __future__ import annotations
 
 import logging
+from datetime import date, datetime
 import requests
 from typing import Set
 
@@ -176,6 +177,35 @@ class AlpacaClient:
         equity = float(body["equity"])
         logger.info("Account equity: %.2f", equity)
         return equity
+
+    def get_portfolio_history(self, start: date) -> list[dict]:
+        """
+        Fetch daily portfolio equity history from Alpaca.
+
+        Uses the trading API endpoint:
+            GET /v2/account/portfolio/history?timeframe=1D&start={start}
+
+        Returns:
+            List of {"date": "YYYY-MM-DD", "equity": float} dicts, oldest first.
+            Entries with null or zero equity are excluded.
+
+        Raises:
+            AlpacaError: on network failure or non-2xx response.
+        """
+        url = (
+            f"{self._base_url}/v2/account/portfolio/history"
+            f"?timeframe=1D&start={start.isoformat()}"
+        )
+        logger.info("Fetching portfolio history from Alpaca (%s) since %s", self._mode, start)
+        body = self._get(url)
+        result = []
+        for ts, eq in zip(body.get("timestamp", []), body.get("equity", [])):
+            if eq is not None and float(eq) > 0:
+                result.append({
+                    "date":   datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d"),
+                    "equity": float(eq),
+                })
+        return result
 
     def get_order(self, order_id: str) -> dict:
         """
