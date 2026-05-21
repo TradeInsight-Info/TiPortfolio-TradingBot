@@ -488,7 +488,7 @@ def get_config():
     config_repo = PortfolioConfigRepository(current_app.config["DB_SESSION"])
     row = config_repo.get()
     if row is None:
-        return jsonify({"initial_amount": None}), 200
+        return jsonify({"initial_amount": 10000}), 200
     return jsonify({
         "initial_amount": float(row.initial_amount),
         "recorded_at":    row.recorded_at.isoformat(),
