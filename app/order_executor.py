@@ -64,7 +64,7 @@ class OrderResult:
     """
     symbol: str
     side: str
-    qty: int
+    qty: float
     alpaca_order_id: str | None = None
     success: bool = False
     error: str | None = None
@@ -209,12 +209,12 @@ class OrderExecutor:
         network timeout returns the existing Alpaca order instead of duplicating.
         """
         side = "buy" if delta.delta > 0 else "sell"
-        qty  = abs(delta.delta)
+        qty  = round(abs(delta.delta), 6)
         client_order_id = f"ti-{signal_hash[:12]}-{side}-{delta.symbol.lower()}"
 
         payload = {
             "symbol":          delta.symbol,
-            "qty":             str(qty),      # Alpaca expects a string quantity
+            "qty":             str(qty),      # Alpaca expects a string quantity; accepts decimals
             "side":            side,
             "type":            "market",
             "time_in_force":   "day",
@@ -223,7 +223,7 @@ class OrderExecutor:
 
         url = f"{self._base_url}/v2/orders"
         logger.info(
-            "Submitting %s order | symbol=%s qty=%d client_order_id=%s",
+            "Submitting %s order | symbol=%s qty=%g client_order_id=%s",
             side, delta.symbol, qty, client_order_id,
         )
 

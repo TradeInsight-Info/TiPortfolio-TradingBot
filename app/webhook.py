@@ -160,7 +160,7 @@ def _format_order_public(order: dict) -> dict:
     return {
         "symbol":    order["symbol"],
         "direction": order["direction"],
-        "shares":    abs(order["delta_shares"]),  # always a positive integer
+        "shares":    abs(order["delta_shares"]),
         "status":           order.get("status"),
         # Fill fields - may be None until the order reaches a terminal state
         "fill_status":      order.get("fill_status"),
