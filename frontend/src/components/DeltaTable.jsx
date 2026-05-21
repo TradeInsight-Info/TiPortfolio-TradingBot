@@ -1,12 +1,21 @@
 import { useState } from "react";
 import { useDelta } from "../hooks/useDelta";
 
-// Badge colour mapping for rebalance event status
-const STATUS_STYLES = {
-  success: "badge-success",
-  partial: "badge-warning",
-  failed:  "badge-error",
-  no_change: "badge-primary",
+// Badge variant → utility class mapping (replaces daisyUI badge-*)
+const BADGE_VARIANTS = {
+  success: "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200",
+  warning: "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200",
+  error:   "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200",
+  primary: "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary",
+  info:    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200",
+};
+
+// Event-level rebalance status → badge variant
+const STATUS_VARIANT = {
+  success:   "success",
+  partial:   "warning",
+  failed:    "error",
+  no_change: "primary",
 };
 
 // Labels for order directions
@@ -15,7 +24,7 @@ const DIRECTION_LABEL = {
   sell: "SELL",
 };
 
-// Badge colour for direction
+// Direction text colour (semantic, not daisyUI)
 const DIRECTION_STYLES = {
   buy:  "text-green-600 font-semibold",
   sell: "text-red-500 font-semibold",
@@ -30,43 +39,36 @@ const FILL_STATUS = [
 ];
 
 const formatStatus = (raw) => {
-  if (!raw) return '—';
+  if (!raw) return "—";
   const map = {
-    // fill_status
-    filled:          'Filled',
-    partiallyfilled: 'Partially Filled',
-    canceled:        'Canceled',
-    rejected:        'Rejected',
-    pending:         'Pending',
-    accepted:        'Accepted',
-    expired:         'Expired',
-    doneforday:      'Done For Day',
-    // event status
-    success:         'Success',
-    failed:          'Failed',
-    partial:         'Partial',
-    nochange:        'No Change',
+    filled:          "Filled",
+    partiallyfilled: "Partially Filled",
+    canceled:        "Canceled",
+    rejected:        "Rejected",
+    pending:         "Pending",
+    accepted:        "Accepted",
+    expired:         "Expired",
+    doneforday:      "Done For Day",
+    success:         "Success",
+    failed:          "Failed",
+    partial:         "Partial",
+    nochange:        "No Change",
   };
   return map[raw.toLowerCase()] ?? raw;
 };
 
-// Alpaca fill status badge colour
-// "pending"  → orange warning  (initial poll window expired before fill confirmed)
-// "filled"   → green success
-// everything else (partially_filled, canceled, rejected, …) → primary
-function fillStatusBadge(fillStatus) {
-  if (!fillStatus) return null;
-  const styles = {
-    filled:           "badge-success",
-    partially_filled: "badge-warning",
-    pending:          "badge-warning",
-    canceled:         "badge-primary",
-    rejected:         "badge-error",
+// Alpaca fill status → badge variant
+function fillStatusVariant(fillStatus) {
+  const variants = {
+    filled:           "success",
+    partially_filled: "warning",
+    pending:          "warning",
+    canceled:         "primary",
+    rejected:         "error",
   };
-  return styles[fillStatus] ?? "badge-info";
+  return variants[fillStatus] ?? "info";
 }
 
-// WarningIcon shown next to the retry button when a fill is still pending
 function WarningIcon() {
   return (
     <svg
@@ -87,27 +89,23 @@ function WarningIcon() {
   );
 }
 
-// Check whether any order in an event needs a fill status refresh.
 function hasPendingOrders(event) {
   return event.orders.some(
-    (o) =>
-      !FILL_STATUS.includes(o.fill_status) && o.status === "accepted");
+    (o) => !FILL_STATUS.includes(o.fill_status) && o.status === "accepted"
+  );
 }
 
-// Format a number as a dollar price string (e.g. 153.42 → "$153.42")
 function formatPrice(value) {
   if (value == null) return "—";
   return `$${Number(value).toFixed(2)}`;
 }
 
-// Format a quantity, stripping unnecessary trailing zeros (e.g. 10.0 → "10")
 function formatQty(value) {
   if (value == null) return "—";
   const n = Number(value);
   return Number.isInteger(n) ? String(n) : n.toFixed(4).replace(/\.?0+$/, "");
 }
 
-// RetryButton - isolated so each event row manages its own loading state
 function RetryButton({ eventId, onRefresh }) {
   const [busy, setBusy] = useState(false);
   const [retryError, setRetryError] = useState(null);
@@ -129,13 +127,13 @@ function RetryButton({ eventId, onRefresh }) {
         <span className="text-xs text-orange-500">Fill unconfirmed</span>
       </div>
       <button
-        className="btn btn-xs btn-outline btn-warning"
+        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-yellow-500 text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 transition-colors disabled:opacity-50"
         onClick={handleClick}
         disabled={busy}
       >
         {busy ? (
           <>
-            <span className="loading loading-spinner loading-xs mr-1" />
+            <span className="animate-spin inline-block h-3 w-3 border-2 border-current border-t-transparent rounded-full" />
             Checking…
           </>
         ) : (
@@ -143,7 +141,7 @@ function RetryButton({ eventId, onRefresh }) {
         )}
       </button>
       {retryError && (
-        <span className="text-xs text-error">{retryError}</span>
+        <span className="text-xs text-destructive">{retryError}</span>
       )}
     </div>
   );
@@ -152,29 +150,26 @@ function RetryButton({ eventId, onRefresh }) {
 export default function DeltaTable() {
   const { events, loading, error, refreshEvent } = useDelta();
 
-  // --- Loading state ---
   if (loading) {
     return (
       <div className="flex justify-center items-center py-16">
-        <span className="loading loading-spinner loading-lg text-primary" />
-        <span className="ml-3 text-gray-500">Loading trade records…</span>
+        <span className="animate-spin inline-block h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+        <span className="ml-3 text-muted-foreground">Loading trade records…</span>
       </div>
     );
   }
 
-  // --- Error state ---
   if (error) {
     return (
-      <div className="alert alert-error max-w-xl mx-auto mt-8">
+      <div className="flex items-center gap-2 rounded-lg border border-destructive bg-destructive/10 text-destructive px-4 py-3 max-w-xl mx-auto mt-8">
         <span>Failed to load trade records: {error}</span>
       </div>
     );
   }
 
-  // --- Empty state ---
   if (events.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           className="h-16 w-16 mb-4 opacity-40"
@@ -195,29 +190,26 @@ export default function DeltaTable() {
     );
   }
 
-  // Each event may contain multiple orders (one per symbol traded).
-  // Render one row per order, merging the event-level date and status.
   const rows = events.flatMap((event) => {
     const date = new Date(event.timestamp).toLocaleString("en-NZ", {
-      timeZone: "Pacific/Auckland",  // Display in NZ local time
-      year:  "numeric",
-      month: "short",
-      day:   "numeric",
-      hour:  "2-digit",
-      minute:"2-digit",
+      timeZone: "Pacific/Auckland",
+      year:   "numeric",
+      month:  "short",
+      day:    "numeric",
+      hour:   "2-digit",
+      minute: "2-digit",
     });
-    
+
     const pending = hasPendingOrders(event);
 
-    // Render a single summary row for no_change events
     if (event.orders.length === 0) {
       return [{
         eventId:    event.id,
         date,
-        symbol:    "—",
-        direction: "—",
-        shares:    "—",
-        status:    event.status,
+        symbol:     "—",
+        direction:  "—",
+        shares:     "—",
+        status:     event.status,
         pending:    false,
         fillStatus: null,
         filledQty:  null,
@@ -228,48 +220,45 @@ export default function DeltaTable() {
     }
 
     return event.orders.map((order, idx) => ({
-      eventId:   event.id,
+      eventId:        event.id,
       date,
-      symbol:    order.symbol,
-      direction: order.direction,
-      shares:    order.shares,
-      status:    event.status,
+      symbol:         order.symbol,
+      direction:      order.direction,
+      shares:         order.shares,
+      status:         event.status,
       pending,
-      fillStatus: order.fill_status,
-      filledQty:  order.filled_qty,
-      filledAvg:  order.filled_avg_price,
-      // Only render the date and status cells on the first order row of each event
-      isFirstRow: idx === 0,
-      orderCount: event.orders.length,
+      fillStatus:     order.fill_status,
+      filledQty:      order.filled_qty,
+      filledAvg:      order.filled_avg_price,
+      isFirstRow:     idx === 0,
+      orderCount:     event.orders.length,
       portfolioValue: idx === 0 ? (order.portfolio_value ?? null) : null,
     }));
   });
 
   return (
     <div className="overflow-x-auto rounded-lg shadow w-full">
-      <table className="table table-zebra w-full">
+      <table className="w-full text-sm">
         <thead>
-          <tr className="bg-base-200 text-base-content text-sm uppercase tracking-wide text-center text-wrap">
-            <th>Date</th>
-            <th>Symbol</th>
-            <th>Direction</th>
-            <th>Shares</th>
-            {/* Fill columns */}
-            <th>Fill Status</th>
-            <th>Filled Qty</th>
-            <th>Avg Price</th>
-            <th>Portfolio Value</th>
-            <th>Status</th>
+          <tr className="bg-muted text-muted-foreground text-xs uppercase tracking-wide text-center">
+            <th className="px-3 py-3 font-medium">Date</th>
+            <th className="px-3 py-3 font-medium">Symbol</th>
+            <th className="px-3 py-3 font-medium">Direction</th>
+            <th className="px-3 py-3 font-medium">Shares</th>
+            <th className="px-3 py-3 font-medium">Fill Status</th>
+            <th className="px-3 py-3 font-medium">Filled Qty</th>
+            <th className="px-3 py-3 font-medium">Avg Price</th>
+            <th className="px-3 py-3 font-medium">Portfolio Value</th>
+            <th className="px-3 py-3 font-medium">Status</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row, idx) => (
-            <tr key={idx} className="hover">
-              {/* Date + retry button: only on the first order row of each event */}
+            <tr key={idx} className="odd:bg-muted/20 hover:bg-accent/40 transition-colors border-t border-border">
               {row.isFirstRow && (
                 <td
                   rowSpan={row.orderCount}
-                  className="text-sm text-gray-600 whitespace-nowrap align-top pt-3"
+                  className="px-3 py-3 text-sm text-muted-foreground whitespace-nowrap align-top"
                 >
                   <div>{row.date}</div>
                   {row.pending && (
@@ -278,43 +267,37 @@ export default function DeltaTable() {
                 </td>
               )}
 
-              {/* Per-order columns */}
-              <td className="font-mono font-medium">{row.symbol}</td>
-              <td>
+              <td className="px-3 py-3 font-mono font-medium">{row.symbol}</td>
+              <td className="px-3 py-3">
                 <span className={DIRECTION_STYLES[row.direction] ?? ""}>
                   {DIRECTION_LABEL[row.direction] ?? row.direction}
                 </span>
               </td>
-              <td className="tabular-nums">{row.shares}</td>
+              <td className="px-3 py-3 tabular-nums">{row.shares}</td>
 
-              {/* Fill status badge */}
-              <td className="text-center font-bold">
+              <td className="px-3 py-3 text-center">
                 {row.fillStatus ? (
-                  <span className={`badge badge-sm badge-soft ${fillStatusBadge(row.fillStatus)}`}>
+                  <span className={BADGE_VARIANTS[fillStatusVariant(row.fillStatus)]}>
                     {formatStatus(row.fillStatus)}
                   </span>
                 ) : (
-                  <span className="text-gray-400">—</span>
+                  <span className="text-muted-foreground">—</span>
                 )}
               </td>
 
-              {/* Filled quantity */}
-              <td className="tabular-nums">{formatQty(row.filledQty)}</td>
-
-              {/* Average fill price */}
-              <td className="tabular-nums">{formatPrice(row.filledAvg)}</td>
+              <td className="px-3 py-3 tabular-nums">{formatQty(row.filledQty)}</td>
+              <td className="px-3 py-3 tabular-nums">{formatPrice(row.filledAvg)}</td>
 
               {row.isFirstRow && (
-                <td rowSpan={row.orderCount} className="align-top pt-3 tabular-nums">
+                <td rowSpan={row.orderCount} className="px-3 py-3 align-top tabular-nums">
                   {row.portfolioValue != null
                     ? `$${Number(row.portfolioValue).toLocaleString("en-US", { minimumFractionDigits: 2 })}`
                     : "—"}
                 </td>
               )}
-              {/* Event-level status badge: only on the first row */}
               {row.isFirstRow && (
-                <td rowSpan={row.orderCount} className="align-top text-center pt-3 font-bold">
-                  <span className={`badge badge-sm badge-soft ${STATUS_STYLES[row.status] ?? "badge-primary"}`}>
+                <td rowSpan={row.orderCount} className="px-3 py-3 align-top text-center">
+                  <span className={BADGE_VARIANTS[STATUS_VARIANT[row.status] ?? "primary"]}>
                     {formatStatus(row.status)}
                   </span>
                 </td>

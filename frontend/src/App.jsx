@@ -2,8 +2,11 @@ import { useState, useEffect } from "react";
 import BenchmarkChart from "./components/BenchmarkChart";
 import DeltaTable from "./components/DeltaTable";
 import IntroSection from "./components/IntroSection";
+import { useTheme } from "./hooks/useTheme";
 
 function App() {
+  useTheme(); // sync OS preference → html.dark class
+
   const [activeSection, setActiveSection] = useState("intro");
 
   useEffect(() => {
@@ -26,12 +29,15 @@ function App() {
   const navClass = (id) =>
     activeSection === id
       ? "font-semibold text-primary"
-      : "text-base-content hover:text-primary transition-colors";
+      : "text-foreground hover:text-primary transition-colors";
 
   return (
     <>
-      <nav className="navbar bg-base-100 shadow px-6 gap-4 sticky top-0 z-50">
-        <span className="text-xl font-bold mr-6">TiPortfolio Demo</span>
+      <nav className="flex items-center bg-card border-b border-border shadow-sm px-6 gap-4 sticky top-0 z-50 h-16">
+        <a href="#intro" className="flex items-center gap-2 mr-6">
+          <img src="/logo.svg" alt="" className="h-8 w-8 rounded-md" aria-hidden="true" />
+          <span className="text-lg font-bold">TiPortfolio</span>
+        </a>
         <a href="#intro" className={navClass("intro")}>
           About
         </a>
@@ -52,7 +58,7 @@ function App() {
 
       <section id="trades" className="max-w-7xl mx-auto px-4 py-16">
         <h2 className="text-2xl font-bold mb-2">Trade Records</h2>
-        <p className="text-gray-500 mb-6">
+        <p className="text-muted-foreground mb-6">
           All rebalance decisions made by the algorithm, sorted by most recent
           first.
         </p>
@@ -61,7 +67,7 @@ function App() {
 
       <section id="performance" className="max-w-5xl mx-auto px-4 py-16">
         <h2 className="text-2xl font-bold mb-2">Performance vs Market</h2>
-        <p className="text-gray-500 mb-6">
+        <p className="text-muted-foreground mb-6">
           Cumulative return of the bot vs. market benchmarks, indexed from the
           first rebalance date.
         </p>

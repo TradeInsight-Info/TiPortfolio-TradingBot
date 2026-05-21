@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 80" width="500" height="80">
+  <!-- Monogram icon at 80×80 scale -->
+  <rect x="0" y="0" width="80" height="80" rx="12" fill="#065f46"/>
+  <line x1="10" y1="62" x2="68" y2="22"
+        stroke="#6ee7b7" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+  <!-- T scaled -->
+  <rect x="16" y="22" width="30" height="7" rx="1" fill="#ffffff"/>
+  <rect x="26" y="22" width="10" height="37" rx="1" fill="#ffffff"/>
+  <!-- i scaled -->
+  <rect x="50" y="31" width="7" height="28" rx="1" fill="#ffffff"/>
+  <!-- i dot accent -->
+  <rect x="48" y="18" width="9" height="9" rx="2" fill="#6ee7b7"/>
+
+  <!-- Wordmark text — uses system font; convert to paths for print use -->
+  <text
+    x="96"
+    y="54"
+    font-family="Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="36"
+    font-weight="600"
+    fill="#065f46"
+    letter-spacing="-0.5"
+  >TiPortfolio</text>
+</svg>
