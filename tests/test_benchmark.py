@@ -7,7 +7,7 @@ All yfinance calls and DB queries are mocked - no network calls, no Flask app, n
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -40,10 +40,27 @@ def _make_event(ts: datetime, weights: dict, status: str = "success") -> MagicMo
     ev.orders = []
     return ev
 
+def _make_event_with_fills(ts: datetime, orders: list[dict], status: str = "success") -> MagicMock:
+    ev = MagicMock()
+    ev.timestamp = ts
+    ev.target_weights = {}
+    ev.status = status
+    ev.orders = orders
+    return ev
+
 SAMPLE_EVENTS = [
     _make_event(
         datetime(2026, 1, 2, tzinfo=timezone.utc),
         {"SPY": 0.6, "QQQ": 0.4},
+    )
+]
+
+# Events with filled orders for _portfolio_value_curve tests
+# 1 SPY bought on 2026-01-02; prices start at 100.0 and step +1/day
+SAMPLE_FILL_EVENTS = [
+    _make_event_with_fills(
+        datetime(2026, 1, 2, tzinfo=timezone.utc),
+        [{"symbol": "SPY", "direction": "buy", "filled_qty": 1.0, "filled_avg_price": 100.0}],
     )
 ]
 
@@ -167,34 +184,36 @@ class TestCaching:
             bm_module._get_prices(["QQQ"], p.index[0].date(), p.index[-1].date())
         assert mock_dl.call_count == 2
 
-# Equity curve unit tests
-class TestBotEquityCurve:
+# Portfolio value curve unit tests
+class TestPortfolioValueCurve:
     def test_empty_events_returns_empty_series(self):
-        assert bm_module._bot_equity_curve([], _prices(["SPY"])).empty
+        assert bm_module._portfolio_value_curve([], _prices(["SPY"])).empty
 
-    def test_curve_starts_at_1(self):
-        result = bm_module._bot_equity_curve(SAMPLE_EVENTS, _prices(["SPY", "QQQ"]))
-        assert round(result.iloc[0], 6) == 1.0
+    def test_returns_usd_value_on_first_day(self):
+        # 1 SPY held; prices[0] = 100.0 → value = 100.0
+        prices = _prices(["SPY"], n=5)
+        result = bm_module._portfolio_value_curve(SAMPLE_FILL_EVENTS, prices)
+        assert not result.empty
+        assert result.iloc[0] == pytest.approx(100.0)
 
-    def test_curve_length_matches_price_rows(self):
-        prices = _prices(["SPY", "QQQ"], n=5)
-        result = bm_module._bot_equity_curve(SAMPLE_EVENTS, prices)
+    def test_curve_length_matches_price_rows_when_fully_held(self):
+        prices = _prices(["SPY"], n=5)
+        result = bm_module._portfolio_value_curve(SAMPLE_FILL_EVENTS, prices)
         assert len(result) == len(prices)
+
+_FIRST_DATE = date(2026, 1, 2)  # matches the start of _prices() fixtures
 
 class TestBenchmarkCurve:
     def test_spy_curve_starts_at_1(self):
-        assert round(bm_module._benchmark_curve("SPY", _prices(["SPY"])).iloc[0], 6) == 1.0
+        assert round(bm_module._benchmark_curve("SPY", _prices(["SPY"]), _FIRST_DATE).iloc[0], 6) == 1.0
 
     def test_missing_ticker_returns_empty_series(self):
-        assert bm_module._benchmark_curve("SPY", _prices(["QQQ"])).empty
+        assert bm_module._benchmark_curve("SPY", _prices(["QQQ"]), _FIRST_DATE).empty
 
     def test_composite_curve_starts_at_1(self):
-        result = bm_module._benchmark_curve("QQQ+GLD+BIL", _prices(["QQQ", "GLD", "BIL"]))
+        result = bm_module._benchmark_curve("QQQ+GLD+BIL", _prices(["QQQ", "GLD", "BIL"]), _FIRST_DATE)
         assert round(result.iloc[0], 6) == 1.0
 
     def test_composite_with_missing_component_still_works(self):
-        """
-        If BIL is unavailable, curve is built from QQQ+GLD only.
-        """
-        result = bm_module._benchmark_curve("QQQ+GLD+BIL", _prices(["QQQ", "GLD"]))
+        result = bm_module._benchmark_curve("QQQ+GLD+BIL", _prices(["QQQ", "GLD"]), _FIRST_DATE)
         assert not result.empty

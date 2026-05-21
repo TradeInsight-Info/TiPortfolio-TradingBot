@@ -15,7 +15,7 @@ Responsibilities:
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import requests
 from typing import Set
 
@@ -202,7 +202,7 @@ class AlpacaClient:
         for ts, eq in zip(body.get("timestamp", []), body.get("equity", [])):
             if eq is not None and float(eq) > 0:
                 result.append({
-                    "date":   datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d"),
+                    "date":   datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d"),
                     "equity": float(eq),
                 })
         return result
