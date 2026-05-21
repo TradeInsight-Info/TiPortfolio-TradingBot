@@ -73,7 +73,7 @@ print(json.dumps({'weights': weights, 'date': sys.argv[2]}))
     CURL_ARGS+=(-H "Authorization: Bearer $TOKEN")
   fi
 
-  RAW=$(curl "${CURL_ARGS[@]}" 2>/dev/null || echo '{"error":"connection refused"}\n000')
+  RAW=$(curl "${CURL_ARGS[@]}" 2>/dev/null || printf '{"error":"connection refused"}\n000')
   HTTP_CODE=$(echo "$RAW" | tail -1)
   BODY=$(echo "$RAW" | sed '$d')
 
