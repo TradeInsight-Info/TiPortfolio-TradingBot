@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import BenchmarkChart from "./components/BenchmarkChart";
 import DeltaTable from "./components/DeltaTable";
 import IntroSection from "./components/IntroSection";
+import PerformanceMetrics from "./components/PerformanceMetrics";
 import { useTheme } from "./hooks/useTheme";
 
 function App() {
@@ -10,7 +11,7 @@ function App() {
   const [activeSection, setActiveSection] = useState("intro");
 
   useEffect(() => {
-    const sections = ["intro", "trades", "performance"];
+    const sections = ["intro", "performance", "trades"];
     const observers = sections.map((id) => {
       const el = document.getElementById(id);
       if (!el) return null;
@@ -41,11 +42,11 @@ function App() {
         <a href="#intro" className={navClass("intro")}>
           About
         </a>
-        <a href="#trades" className={navClass("trades")}>
-          Trades
-        </a>
         <a href="#performance" className={navClass("performance")}>
           Performance
+        </a>
+        <a href="#trades" className={navClass("trades")}>
+          Trades
         </a>
       </nav>
 
@@ -56,6 +57,16 @@ function App() {
         <IntroSection />
       </section>
 
+      <section id="performance" className="max-w-7xl mx-auto px-4 py-16">
+        <h2 className="text-2xl font-bold mb-2">Performance vs Market</h2>
+        <p className="text-muted-foreground mb-6">
+          Cumulative return of the bot vs. market benchmarks, indexed from the
+          first rebalance date.
+        </p>
+        <BenchmarkChart />
+        <PerformanceMetrics />
+      </section>
+
       <section id="trades" className="max-w-7xl mx-auto px-4 py-16">
         <h2 className="text-2xl font-bold mb-2">Trade Records</h2>
         <p className="text-muted-foreground mb-6">
@@ -63,15 +74,6 @@ function App() {
           first.
         </p>
         <DeltaTable />
-      </section>
-
-      <section id="performance" className="max-w-5xl mx-auto px-4 py-16">
-        <h2 className="text-2xl font-bold mb-2">Performance vs Market</h2>
-        <p className="text-muted-foreground mb-6">
-          Cumulative return of the bot vs. market benchmarks, indexed from the
-          first rebalance date.
-        </p>
-        <BenchmarkChart />
       </section>
     </>
   );

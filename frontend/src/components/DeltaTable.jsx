@@ -38,6 +38,7 @@ const FILL_STATUS = [
   "rejected",
 ];
 
+
 const formatStatus = (raw) => {
   if (!raw) return "—";
   const map = {
@@ -57,17 +58,6 @@ const formatStatus = (raw) => {
   return map[raw.toLowerCase()] ?? raw;
 };
 
-// Alpaca fill status → badge variant
-function fillStatusVariant(fillStatus) {
-  const variants = {
-    filled:           "success",
-    partially_filled: "warning",
-    pending:          "warning",
-    canceled:         "primary",
-    rejected:         "error",
-  };
-  return variants[fillStatus] ?? "info";
-}
 
 function WarningIcon() {
   return (
@@ -97,12 +87,15 @@ function hasPendingOrders(event) {
 
 function formatPrice(value) {
   if (value == null) return "—";
-  return `$${Number(value).toFixed(2)}`;
+  const n = Number(value);
+  if (!isFinite(n)) return "~";
+  return `$${n.toFixed(2)}`;
 }
 
 function formatQty(value) {
   if (value == null) return "—";
   const n = Number(value);
+  if (!isFinite(n)) return "~";
   return Number.isInteger(n) ? String(n) : n.toFixed(4).replace(/\.?0+$/, "");
 }
 
@@ -190,6 +183,31 @@ export default function DeltaTable() {
     );
   }
 
+  // Build cumulative holdings snapshot after each event (events are newest-first)
+  const positionMap = new Map();
+  const runningQty = new Map();
+  const lastPrice = new Map();
+  for (const event of [...events].reverse()) {
+    for (const order of event.orders) {
+      if (order.filled_qty == null) continue;
+      const qty = Number(order.filled_qty);
+      const prev = runningQty.get(order.symbol) ?? 0;
+      const delta = order.direction === "buy" ? qty : -qty;
+      runningQty.set(order.symbol, prev + delta);
+      if (order.filled_avg_price != null) {
+        lastPrice.set(order.symbol, Number(order.filled_avg_price));
+      }
+    }
+    const snapshot = [];
+    for (const [symbol, qty] of runningQty) {
+      if (qty > 0) {
+        const price = lastPrice.get(symbol);
+        snapshot.push({ symbol, qty, value: price != null ? qty * price : null });
+      }
+    }
+    positionMap.set(event.id, snapshot);
+  }
+
   const rows = events.flatMap((event) => {
     const date = new Date(event.timestamp).toLocaleString("en-NZ", {
       timeZone: "Pacific/Auckland",
@@ -201,6 +219,7 @@ export default function DeltaTable() {
     });
 
     const pending = hasPendingOrders(event);
+    const positions = positionMap.get(event.id) ?? [];
 
     if (event.orders.length === 0) {
       return [{
@@ -209,11 +228,10 @@ export default function DeltaTable() {
         symbol:     "—",
         direction:  "—",
         shares:     "—",
+        filledAvg:  null,
         status:     event.status,
         pending:    false,
-        fillStatus: null,
-        filledQty:  null,
-        filledAvg:  null,
+        positions:  [],
         isFirstRow: true,
         orderCount: 1,
       }];
@@ -225,11 +243,10 @@ export default function DeltaTable() {
       symbol:         order.symbol,
       direction:      order.direction,
       shares:         order.shares,
+      filledAvg:      order.filled_avg_price,
       status:         event.status,
       pending,
-      fillStatus:     order.fill_status,
-      filledQty:      order.filled_qty,
-      filledAvg:      order.filled_avg_price,
+      positions:      idx === 0 ? positions : null,
       isFirstRow:     idx === 0,
       orderCount:     event.orders.length,
       portfolioValue: idx === 0 ? (order.portfolio_value ?? null) : null,
@@ -245,9 +262,8 @@ export default function DeltaTable() {
             <th className="px-3 py-3 font-medium">Symbol</th>
             <th className="px-3 py-3 font-medium">Direction</th>
             <th className="px-3 py-3 font-medium">Shares</th>
-            <th className="px-3 py-3 font-medium">Fill Status</th>
-            <th className="px-3 py-3 font-medium">Filled Qty</th>
             <th className="px-3 py-3 font-medium">Avg Price</th>
+            <th className="px-3 py-3 font-medium">Positions</th>
             <th className="px-3 py-3 font-medium">Portfolio Value</th>
             <th className="px-3 py-3 font-medium">Status</th>
           </tr>
@@ -273,21 +289,36 @@ export default function DeltaTable() {
                   {DIRECTION_LABEL[row.direction] ?? row.direction}
                 </span>
               </td>
-              <td className="px-3 py-3 tabular-nums">{row.shares}</td>
-
-              <td className="px-3 py-3 text-center">
-                {row.fillStatus ? (
-                  <span className={BADGE_VARIANTS[fillStatusVariant(row.fillStatus)]}>
-                    {formatStatus(row.fillStatus)}
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </td>
-
-              <td className="px-3 py-3 tabular-nums">{formatQty(row.filledQty)}</td>
+              <td className="px-3 py-3 tabular-nums">{formatQty(row.shares)}</td>
               <td className="px-3 py-3 tabular-nums">{formatPrice(row.filledAvg)}</td>
 
+              {row.isFirstRow && (
+                <td rowSpan={row.orderCount} className="px-3 py-3 align-top text-sm">
+                  {row.positions && row.positions.length > 0 ? (
+                    <ul className="space-y-0.5">
+                      {row.positions.map((p) => {
+                        const pct = (p.value != null && row.portfolioValue)
+                          ? ((p.value / row.portfolioValue) * 100).toFixed(1) + "%"
+                          : null;
+                        return (
+                          <li key={p.symbol} className="font-mono whitespace-nowrap">
+                            <span className="font-medium">{p.symbol}</span>
+                            {": "}
+                            <span className="tabular-nums">{formatQty(p.qty)}</span>
+                            {p.value != null && (
+                              <span className="text-muted-foreground tabular-nums">
+                                {" "}({formatPrice(p.value)}{pct ? ` · ${pct}` : ""})
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </td>
+              )}
               {row.isFirstRow && (
                 <td rowSpan={row.orderCount} className="px-3 py-3 align-top tabular-nums">
                   {row.portfolioValue != null
@@ -297,9 +328,13 @@ export default function DeltaTable() {
               )}
               {row.isFirstRow && (
                 <td rowSpan={row.orderCount} className="px-3 py-3 align-top text-center">
-                  <span className={BADGE_VARIANTS[STATUS_VARIANT[row.status] ?? "primary"]}>
-                    {formatStatus(row.status)}
-                  </span>
+                  {row.status === "no_change" ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <span className={BADGE_VARIANTS[STATUS_VARIANT[row.status] ?? "primary"]}>
+                      {formatStatus(row.status)}
+                    </span>
+                  )}
                 </td>
               )}
             </tr>

@@ -37,9 +37,9 @@ class TestDeltaFormula:
         assert delta.target_shares == math.floor(10_000 * 0.6 / 500)
         assert delta.delta == 12 - 10
 
-    def test_floor_applied_correctly(self, portfolio_value):
+    def test_fractional_target_shares(self, portfolio_value):
         """
-        $10 000 * 0.33 / 500 = 6.6 -> floor(6.6) = 6
+        $10 000 * 0.33 / 500 = 6.6 -> target_shares=6.6, delta=6.6 (fractional allowed)
         """
         result = calculate_deltas(
             portfolio_value=portfolio_value,
@@ -47,8 +47,8 @@ class TestDeltaFormula:
             current_positions={"SPY": 0.0},
             current_prices={"SPY": 500.0},
         )
-        assert result[0].target_shares == 6
-        assert result[0].delta == 6
+        assert result[0].target_shares == pytest.approx(6.6)
+        assert result[0].delta == pytest.approx(6.6)
 
     def test_sells_when_holding_more_than_target(self, portfolio_value, prices):
         """
@@ -181,11 +181,10 @@ class TestEdgeCases:
         )
         assert isinstance(result[1], OrderDelta)
     
-    def test_fractional_current_shares_truncated_for_delta(self, portfolio_value, prices):
+    def test_fractional_current_shares_used_exactly_for_delta(self, portfolio_value, prices):
         """
         Alpaca may return fractional qty (e.g. 10.7).
-        floor(10000 * 0.6 / 500) = 12; 
-        int(10.7) = 10 for the subtraction so delta = 12 - 10 = 2.
+        round(10000 * 0.6 / 500, 6) = 12.0; delta = 12.0 - 10.7 = 1.3.
         """
         result = calculate_deltas(
             portfolio_value=portfolio_value,
@@ -193,7 +192,7 @@ class TestEdgeCases:
             current_positions={"SPY": 10.7},
             current_prices=prices,
         )
-        assert result[0].delta == 12 - 10
+        assert result[0].delta == pytest.approx(1.3)
 
     def test_high_price_symbol_may_produce_zero_target_shares(self, portfolio_value):
         """
@@ -207,9 +206,9 @@ class TestEdgeCases:
         )
         assert result == []
 
-    def test_high_price_symbol_held_but_target_rounds_to_zero_means_full_exit(self, portfolio_value):
+    def test_high_price_symbol_held_sells_down_to_fractional_target(self, portfolio_value):
         """
-        target_shares=0; held 1 -> delta=-1 (sell)
+        round(10000 * 0.001 / 50000, 6) = 0.0002; held 1.0 -> delta = 0.0002 - 1.0 = -0.9998
         """
         result = calculate_deltas(
             portfolio_value=portfolio_value,
@@ -218,7 +217,7 @@ class TestEdgeCases:
             current_prices={"BRK": 50_000.0},
         )
         assert len(result) == 1
-        assert result[0].delta == -1
+        assert result[0].delta == pytest.approx(-0.9998)
 
     def test_invalid_portfolio_value_raises(self, prices):
         with pytest.raises(ValueError, match="portfolio_value"):
