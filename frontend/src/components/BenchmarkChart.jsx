@@ -43,7 +43,7 @@ function mergeSeries(botArr, spyArr, qqqArr) {
 function scaleToUsd(rows, initialAmount) {
   return rows.map((d) => ({
     date: d.date,
-    bot: d.bot != null ? d.bot * initialAmount : undefined,
+    bot: d.bot != null ? d.bot : undefined,                  // already USD from backend
     spy: d.spy != null ? d.spy * initialAmount : undefined,
     qqq: d.qqq != null ? d.qqq * initialAmount : undefined,
   }));
