@@ -36,9 +36,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.2(vite@8.0.13(jiti@2.7.0))
-      daisyui:
-        specifier: ^5.5.19
-        version: 5.5.19
       eslint:
         specifier: ^10.2.1
         version: 10.3.0(jiti@2.7.0)
@@ -737,9 +734,6 @@ packages:
   d3-timer@3.0.1:
     resolution: {integrity: sha512-ndfJ/JxxMd3nw31uyKoY2naivF+r29V+Lc0svZxe1JvvIRmi8hUsrMvdOwgS1o6uBHmiz91geQ0ylPP0aj1VUA==}
     engines: {node: '>=12'}
-
-  daisyui@5.5.19:
-    resolution: {integrity: sha512-pbFAkl1VCEh/MPCeclKL61I/MqRIFFhNU7yiXoDDRapXN4/qNCoMxeCCswyxEEhqL5eiTTfwHvucFtOE71C9sA==}
 
   data-urls@7.0.0:
     resolution: {integrity: sha512-23XHcCF+coGYevirZceTVD7NdJOqVn+49IHyxgszm+JIiHLoB2TkmPtsYkNWT1pvRSGkc35L6NHs0yHkN2SumA==}
@@ -2064,8 +2058,6 @@ snapshots:
       d3-array: 3.2.4
 
   d3-timer@3.0.1: {}
-
-  daisyui@5.5.19: {}
 
   data-urls@7.0.0:
     dependencies:

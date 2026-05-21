@@ -18,7 +18,6 @@ function formatUsd(value) {
   return usd.format(value);
 }
 
-// Merge bot + two benchmark series into a single array keyed by date
 function mergeSeries(botArr, spyArr, qqqArr) {
   const map = {};
   for (const p of botArr) {
@@ -56,15 +55,15 @@ export default function BenchmarkChart() {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-16">
-        <span className="loading loading-spinner loading-lg text-primary" />
-        <span className="ml-3 text-gray-500">Loading performance data…</span>
+        <span className="animate-spin inline-block h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+        <span className="ml-3 text-muted-foreground">Loading performance data…</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="alert alert-error max-w-xl mx-auto mt-8">
+      <div className="flex items-center gap-2 rounded-lg border border-destructive bg-destructive/10 text-destructive px-4 py-3 max-w-xl mx-auto mt-8">
         <span>Failed to load chart: {error}</span>
       </div>
     );
@@ -72,7 +71,7 @@ export default function BenchmarkChart() {
 
   if (noData || !spy.data || !qqq.data) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
         <p className="text-lg font-medium">No performance data yet</p>
         <p className="text-sm mt-1">
           Chart will appear once the bot completes its first rebalance.
@@ -89,7 +88,7 @@ export default function BenchmarkChart() {
     <div>
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={chartData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
 
           <XAxis
             dataKey="date"
@@ -118,7 +117,7 @@ export default function BenchmarkChart() {
             <Line
               type="monotone"
               dataKey="bot"
-              stroke="#6366f1"
+              stroke="hsl(var(--chart-2))"
               strokeWidth={2}
               dot={false}
               activeDot={{ r: 4 }}
@@ -128,7 +127,7 @@ export default function BenchmarkChart() {
           <Line
             type="monotone"
             dataKey="spy"
-            stroke="#f59e0b"
+            stroke="hsl(var(--chart-3))"
             strokeWidth={2}
             dot={false}
             strokeDasharray="5 5"
@@ -138,7 +137,7 @@ export default function BenchmarkChart() {
           <Line
             type="monotone"
             dataKey="qqq"
-            stroke="#10b981"
+            stroke="hsl(var(--chart-1))"
             strokeWidth={2}
             dot={false}
             strokeDasharray="3 3"
@@ -148,7 +147,7 @@ export default function BenchmarkChart() {
         </LineChart>
       </ResponsiveContainer>
 
-      <p className="text-xs text-gray-400 mt-2 text-right">
+      <p className="text-xs text-muted-foreground mt-2 text-right">
         Portfolio value (USD, log scale); seeded with {formatUsd(config.initialAmount)} on{" "}
         {spy.data.first_rebalance_date}
         {!hasBot && " — bot line appears after first rebalance"}.

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Simplified version for small sizes: no diagonal, no accent dot -->
+  <rect x="0" y="0" width="256" height="256" rx="40" ry="40" fill="#065f46"/>
+
+  <!-- T — cross bar -->
+  <rect x="50" y="72" width="96" height="22" rx="3" fill="#ffffff"/>
+  <!-- T — vertical stem -->
+  <rect x="82" y="72" width="30" height="120" rx="3" fill="#ffffff"/>
+
+  <!-- i — vertical body -->
+  <rect x="158" y="100" width="22" height="92" rx="3" fill="#ffffff"/>
+  <!-- i — dot (white at small sizes) -->
+  <rect x="154" y="58" width="28" height="28" rx="6" fill="#ffffff"/>
+</svg>
