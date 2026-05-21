@@ -20,7 +20,8 @@ set -euo pipefail
 
 START="${1:-2024-01-01}"
 END="${2:-2024-12-01}"
-WEIGHTS="${3:-{\"SPY\":0.6,\"QQQ\":0.4}}"
+_DEFAULT_WEIGHTS='{"SPY":0.6,"QQQ":0.4}'
+WEIGHTS="${3:-$_DEFAULT_WEIGHTS}"
 URL="${WEBHOOK_URL:-http://localhost:5000/webhook}"
 TOKEN="${WEBHOOK_SECRET:-}"
 
