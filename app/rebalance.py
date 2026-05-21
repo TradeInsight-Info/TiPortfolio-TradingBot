@@ -187,6 +187,13 @@ class RebalanceRepository:
             session.expunge_all()
         return events
 
+    # Delete - dev-only reset helper
+    def delete_all(self) -> int:
+        """Delete every rebalance event. Returns number of rows deleted."""
+        with self._tx() as session:
+            count = session.query(RebalanceEvent).delete(synchronize_session=False)
+        return count
+
     # Read - existing method kept for date-range queries
     def query_by_date_range(
         self,

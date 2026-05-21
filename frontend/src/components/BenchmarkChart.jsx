@@ -5,7 +5,7 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
-const LABEL = { bot: "Bot", spy: "SPY", qqq: "QQQ" };
+const LABEL = { bot: "TiPortfolio Strategy", spy: "SPY", qqq: "QQQ" };
 
 const usd = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -43,7 +43,7 @@ function mergeSeries(botArr, spyArr, qqqArr) {
 function scaleToUsd(rows, initialAmount) {
   return rows.map((d) => ({
     date: d.date,
-    bot: d.bot != null ? d.bot * initialAmount : undefined,
+    bot: d.bot != null ? d.bot : undefined,                  // already USD from backend
     spy: d.spy != null ? d.spy * initialAmount : undefined,
     qqq: d.qqq != null ? d.qqq * initialAmount : undefined,
   }));
@@ -80,7 +80,7 @@ export default function BenchmarkChart() {
       <div className="flex flex-col items-center justify-center py-20 text-gray-400">
         <p className="text-lg font-medium">No performance data yet</p>
         <p className="text-sm mt-1">
-          Chart will appear once the bot completes its first rebalance.
+          Chart will appear once TiPortfolio Strategy completes its first rebalance.
         </p>
       </div>
     );
@@ -160,7 +160,7 @@ export default function BenchmarkChart() {
           ? <>Portfolio value (USD, log scale); seeded with {formatUsd(config.initialAmount)} on {spy.data.first_rebalance_date}</>
           : <>Normalised return (log scale) from {spy.data.first_rebalance_date}</>
         }
-        {!hasBot && " — bot line appears after first rebalance"}.
+        {!hasBot && " — TiPortfolio Strategy line appears after first rebalance"}.
       </p>
     </div>
   );
