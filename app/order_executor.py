@@ -31,8 +31,8 @@ ExecutionStatus = Literal["success", "partial", "failed"]
 _REQUEST_TIMEOUT_SECONDS = 10
 
 # Polling constants
-# Seconds to wait after submitting ALL orders before polling for fill status
-_FILL_POLL_DELAY_SECONDS: float = 5.0
+_FILL_POLL_INTERVAL_SECONDS: float = 2.0   # seconds between each poll attempt
+_FILL_POLL_TIMEOUT_SECONDS: float = 30.0   # give up after this many seconds total
 
 # Alpaca order lifecycle statuses that indicate a fill state
 _TERMINAL_FILL_STATUSES = frozenset({
@@ -114,19 +114,21 @@ class OrderExecutor:
         }
 
     # Public API
-    def execute(self, deltas: list[OrderDelta]) -> ExecutionResult:
+    def execute(self, deltas: list[OrderDelta], signal_hash: str = "") -> ExecutionResult:
         """
         Submit market orders for every non-zero delta, then poll each
-        accepted order once to capture fill confirmation.
+        accepted order in a loop until terminal status or timeout.
 
-        Sells are submitted and polled before buys so that sell proceeds
-        free buying power before buy orders are placed, preventing
-        "insufficient buying power" rejections on paper accounts.
+        Sells are submitted before buys so that sell proceeds free buying
+        power before buy orders are placed. If any sell is still non-terminal
+        after the poll timeout, a warning is logged and buys proceed anyway
+        (Alpaca will reject buys with insufficient buying power if needed).
 
         Args:
-            deltas: Output of calculator.calculate_deltas() - only non-zero
-                    deltas should be present, but a zero-delta guard is applied
-                    defensively inside this method as well.
+            deltas:      Output of calculator.calculate_deltas().
+            signal_hash: SHA-256 hex of the triggering signal payload, used
+                         to build a deterministic client_order_id per order
+                         so re-submissions are idempotent.
 
         Returns:
             ExecutionResult with per-order outcomes and a rolled-up status.
@@ -142,13 +144,25 @@ class OrderExecutor:
         sells = [d for d in deltas if d.delta < 0]
         buys  = [d for d in deltas if d.delta > 0]
 
-        sell_results = self._submit_and_poll(sells)
-        buy_results  = self._submit_and_poll(buys)
+        sell_results = self._submit_and_poll(sells, signal_hash)
+
+        non_terminal = [
+            r for r in sell_results
+            if r.success and r.alpaca_order_id and r.fill_status not in _TERMINAL_FILL_STATUSES
+        ]
+        if non_terminal:
+            symbols = ", ".join(r.symbol for r in non_terminal)
+            logger.warning(
+                "Proceeding with buys while %d sell(s) still non-terminal after %.0fs: %s",
+                len(non_terminal), _FILL_POLL_TIMEOUT_SECONDS, symbols,
+            )
+
+        buy_results = self._submit_and_poll(buys, signal_hash)
 
         return self._build_execution_result(sell_results + buy_results)
 
-    def _submit_and_poll(self, deltas: list[OrderDelta]) -> list[OrderResult]:
-        """Submit a batch of orders then poll fill status for accepted ones."""
+    def _submit_and_poll(self, deltas: list[OrderDelta], signal_hash: str) -> list[OrderResult]:
+        """Submit a batch of orders then poll until all reach a terminal fill status."""
         if not deltas:
             return []
 
@@ -157,45 +171,60 @@ class OrderExecutor:
             if delta.delta == 0:
                 logger.debug("Skipping zero-delta for %s", delta.symbol)
                 continue
-            results.append(self._submit_order(delta))
+            results.append(self._submit_order(delta, signal_hash))
 
-        accepted = [r for r in results if r.success and r.alpaca_order_id]
-        if accepted:
-            logger.info(
-                "Waiting %.1fs before polling fill status for %d order(s)...",
-                _FILL_POLL_DELAY_SECONDS,
-                len(accepted),
-            )
-            time.sleep(_FILL_POLL_DELAY_SECONDS)
-            for result in accepted:
+        pending = [r for r in results if r.success and r.alpaca_order_id]
+        if not pending:
+            return results
+
+        deadline = time.monotonic() + _FILL_POLL_TIMEOUT_SECONDS
+        while pending and time.monotonic() < deadline:
+            time.sleep(_FILL_POLL_INTERVAL_SECONDS)
+            still_pending = []
+            for result in pending:
                 self._poll_fill(result)
+                if result.fill_status not in _TERMINAL_FILL_STATUSES:
+                    still_pending.append(result)
+            pending = still_pending
+
+        if pending:
+            symbols = ", ".join(r.symbol for r in pending)
+            logger.warning(
+                "%d order(s) still non-terminal after %.0fs poll timeout: %s",
+                len(pending), _FILL_POLL_TIMEOUT_SECONDS, symbols,
+            )
 
         return results
 
     # Internal helpers
-    def _submit_order(self, delta: OrderDelta) -> OrderResult:
+    def _submit_order(self, delta: OrderDelta, signal_hash: str) -> OrderResult:
         """
         POST one market order to Alpaca /v2/orders.
 
         delta > 0 -> buy
         delta < 0 -> sell
         Returns an OrderResult regardless of success or failure.
+
+        Uses a deterministic client_order_id so that a re-submission after a
+        network timeout returns the existing Alpaca order instead of duplicating.
         """
         side = "buy" if delta.delta > 0 else "sell"
         qty  = abs(delta.delta)
+        client_order_id = f"ti-{signal_hash[:12]}-{side}-{delta.symbol.lower()}"
 
         payload = {
-            "symbol":        delta.symbol,
-            "qty":           str(qty),      # Alpaca expects a string quantity
-            "side":          side,
-            "type":          "market",
-            "time_in_force": "day",         # standard for market orders
+            "symbol":          delta.symbol,
+            "qty":             str(qty),      # Alpaca expects a string quantity
+            "side":            side,
+            "type":            "market",
+            "time_in_force":   "day",
+            "client_order_id": client_order_id,
         }
 
         url = f"{self._base_url}/v2/orders"
         logger.info(
-            "Submitting %s order | symbol=%s qty=%d url=%s",
-            side, delta.symbol, qty, url,
+            "Submitting %s order | symbol=%s qty=%d client_order_id=%s",
+            side, delta.symbol, qty, client_order_id,
         )
 
         try:
@@ -205,6 +234,34 @@ class OrderExecutor:
                 headers=self._headers,
                 timeout=_REQUEST_TIMEOUT_SECONDS,
             )
+
+            # 422 with a duplicate client_order_id means this order was already
+            # accepted on a prior attempt (e.g. timeout after Alpaca acked).
+            # Fetch the existing order rather than failing.
+            if response.status_code == 422 and "client_order_id" in response.text:
+                logger.warning(
+                    "Duplicate client_order_id detected — fetching existing order | "
+                    "client_order_id=%s symbol=%s",
+                    client_order_id, delta.symbol,
+                )
+                try:
+                    existing = self._alpaca_client.get_order_by_client_id(client_order_id)
+                    logger.info(
+                        "Recovered existing order | alpaca_id=%s symbol=%s status=%s",
+                        existing.get("id"), delta.symbol, existing.get("status"),
+                    )
+                    return OrderResult(
+                        symbol=delta.symbol,
+                        side=side,
+                        qty=qty,
+                        alpaca_order_id=existing.get("id"),
+                        success=True,
+                    )
+                except AlpacaError as exc:
+                    error_msg = f"Could not recover existing order for {delta.symbol}: {exc}"
+                    logger.error(error_msg)
+                    return OrderResult(symbol=delta.symbol, side=side, qty=qty, error=error_msg)
+
             response.raise_for_status()
 
         except requests.exceptions.Timeout:

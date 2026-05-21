@@ -331,7 +331,7 @@ def receive_signal():
         base_url=alpaca._base_url,
         alpaca_client=alpaca,           # used internally for fill polling
     )
-    execution_result = executor.execute(deltas)
+    execution_result = executor.execute(deltas, signal_hash=payload_hash)
 
     # 7. Persist the full rebalance record to DB
     # This block runs AFTER order submission - whether orders succeeded or failed.
