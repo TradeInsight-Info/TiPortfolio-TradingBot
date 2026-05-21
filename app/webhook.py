@@ -355,8 +355,6 @@ def receive_signal():
             status="no_change",
             error_message=None,
             timestamp=event_ts,
-            source="simulated" if is_simulated else "live",
-            simulation_date=simulation_date,
         )
         return jsonify({
             "status": "no_change",
@@ -407,8 +405,6 @@ def receive_signal():
             status=execution_result.status,
             error_message=execution_result.error_message,
             timestamp=event_ts,
-            source="simulated" if is_simulated else "live",
-            simulation_date=simulation_date,
         )
     except SQLAlchemyError as exc:
         logger.error("DB write failed | hash=%s error=%s", payload_hash, exc)

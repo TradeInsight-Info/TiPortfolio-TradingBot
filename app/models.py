@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Date, Integer, String, DateTime, Index, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Index, Text, JSON
 from app.database import Base
 
 class RebalanceEvent(Base):
@@ -27,11 +27,6 @@ class RebalanceEvent(Base):
 
     status          = Column(String(10), nullable=False)  # "success" / "failed" / "partial"
     error_message   = Column(Text, nullable=True)
-
-    # "live" for real Alpaca trades; "simulated" for local backtest replays
-    source          = Column(String(10), nullable=False, server_default="live")
-    # Set only for simulated events — the trading date from the payload
-    simulation_date = Column(Date, nullable=True)
 
     # Index for date range queries
     __table_args__ = (

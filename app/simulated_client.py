@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Generator, Set
 
 import pandas as pd
@@ -64,14 +64,18 @@ class SimulatedAlpacaClient:
         Build current positions by summing fills from all prior simulated events
         on or before simulation_date.
         """
+        cutoff = datetime(
+            self._simulation_date.year,
+            self._simulation_date.month,
+            self._simulation_date.day,
+            23, 59, 59,
+            tzinfo=timezone.utc,
+        )
         with self._tx() as session:
             events = (
                 session.query(RebalanceEvent)
-                .filter(
-                    RebalanceEvent.source == "simulated",
-                    RebalanceEvent.simulation_date <= self._simulation_date,
-                )
-                .order_by(RebalanceEvent.simulation_date)
+                .filter(RebalanceEvent.timestamp <= cutoff)
+                .order_by(RebalanceEvent.timestamp)
                 .all()
             )
 
@@ -119,13 +123,17 @@ class SimulatedAlpacaClient:
         """
         positions = self.get_positions()
 
+        cutoff = datetime(
+            self._simulation_date.year,
+            self._simulation_date.month,
+            self._simulation_date.day,
+            23, 59, 59,
+            tzinfo=timezone.utc,
+        )
         with self._tx() as session:
             prior_events = (
                 session.query(RebalanceEvent)
-                .filter(
-                    RebalanceEvent.source == "simulated",
-                    RebalanceEvent.simulation_date <= self._simulation_date,
-                )
+                .filter(RebalanceEvent.timestamp <= cutoff)
                 .all()
             )
 

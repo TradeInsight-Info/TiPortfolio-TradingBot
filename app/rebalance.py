@@ -11,7 +11,7 @@ Atomic guarantee:
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Generator
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -51,8 +51,6 @@ class RebalanceRepository:
         status: str,
         error_message: str | None = None,
         timestamp: datetime | None = None,
-        source: str = "live",
-        simulation_date: date | None = None,
     ) -> RebalanceEvent:
         """
         Persist one rebalance event atomically.
@@ -83,8 +81,6 @@ class RebalanceRepository:
             orders=orders,
             status=status,
             error_message=error_message,
-            source=source,
-            simulation_date=simulation_date,
         )
 
         with self._tx() as session:
@@ -191,17 +187,7 @@ class RebalanceRepository:
             session.expunge_all()
         return events
 
-    # Delete - dev-only reset helpers
-    def delete_simulated(self) -> int:
-        """Delete all simulated rebalance events. Returns number of rows deleted."""
-        with self._tx() as session:
-            count = (
-                session.query(RebalanceEvent)
-                .filter(RebalanceEvent.source == "simulated")
-                .delete(synchronize_session=False)
-            )
-        return count
-
+    # Delete - dev-only reset helper
     def delete_all(self) -> int:
         """Delete every rebalance event. Returns number of rows deleted."""
         with self._tx() as session:
