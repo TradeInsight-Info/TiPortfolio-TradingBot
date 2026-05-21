@@ -243,19 +243,19 @@ def receive_signal():
     target_weights: dict[str, float] = body["weights"]
     alpaca: AlpacaClient | None = None
 
-    # Detect simulated mode: env var + "date" field in payload
-    is_simulated = (
-        current_app.config.get("APP_MODE") == "simulated"
-        and "date" in body
-    )
+    is_simulated = current_app.config.get("APP_MODE") == "simulated"
     simulation_date: date | None = None
 
     if is_simulated:
         # 2-4. Simulated: derive positions/prices/equity from DB + yfinance
-        try:
-            simulation_date = date.fromisoformat(body["date"])
-        except ValueError:
-            return jsonify({"error": f"Invalid 'date': {body['date']!r}. Expected YYYY-MM-DD."}), 400
+        raw_date = body.get("date")
+        if raw_date:
+            try:
+                simulation_date = date.fromisoformat(raw_date)
+            except ValueError:
+                return jsonify({"error": f"Invalid 'date': {raw_date!r}. Expected YYYY-MM-DD."}), 400
+        else:
+            simulation_date = date.today()
 
         from app.simulated_client import SimulatedAlpacaClient, SimulatedDataError
 
