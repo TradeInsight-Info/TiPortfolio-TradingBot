@@ -83,4 +83,13 @@ def create_app():
         from flask_cors import CORS
         CORS(app, origins=allowed_origins.split(","), methods=["GET"])
 
+    # Log the active trading mode so the operator can confirm 
+    # which account (paper or live) is active without inspecting the env file.
+    logging.getLogger(__name__).info(
+        "Alpaca trading mode: %s  (base URL: %s)",
+        app.config["ALPACA_MODE"],
+        "https://paper-api.alpaca.markets" if app.config["ALPACA_MODE"] == "paper"
+        else "https://api.alpaca.markets",
+    )
+
     return app
