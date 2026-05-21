@@ -198,11 +198,16 @@ def receive_signal():
         Requires 'Authorization: Bearer <token>' header.
         Token must match WEBHOOK_SECRET env var.
         The secret is never logged or included in any response body.
-    
+
+    Query params:
+        dry_run (optional): "true" | "1" | "yes" — fetch live Alpaca state and compute
+            deltas, but skip order submission and DB write. Returns 200 with delta preview.
+
     Expected body:
         {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}}
 
     Responses:
+        200 OK    - dry_run=true; delta preview returned, nothing persisted.
         202 Accepted - rebalance attempted; record saved; record returned in body.
         400 Bad Request - payload is malformed or weights are invalid.
         401 Unauthorized - WEBHOOK_SECRET configured and Authorization header is missing or wrong.
@@ -280,6 +285,26 @@ def receive_signal():
     except ValueError as exc:
         logger.error("Delta calculation error | hash=%s error=%s", payload_hash, exc)
         return jsonify({"error": f"Delta calculation failed: {exc}"}), 400
+
+    # Dry-run: return computed deltas without submitting orders or writing to DB
+    if request.args.get("dry_run", "").lower() in ("1", "true", "yes"):
+        logger.info("Dry-run mode | hash=%s deltas=%d", payload_hash, len(deltas))
+        return jsonify({
+            "dry_run":         True,
+            "received_at":     received_at.isoformat(),
+            "payload_hash":    payload_hash,
+            "portfolio_value": portfolio_value,
+            "deltas": [
+                {
+                    "symbol":         d.symbol,
+                    "direction":      "buy" if d.delta > 0 else "sell",
+                    "delta_shares":   d.delta,
+                    "current_shares": d.current_shares,
+                    "target_shares":  d.target_shares,
+                }
+                for d in deltas
+            ],
+        }), 200
 
     # 5.5. Check if no deltas (portfolio already matches target)
     if not deltas:
