@@ -304,11 +304,6 @@ def receive_signal():
             logger.error("Alpaca account fetch failed | hash=%s error=%s", payload_hash, exc)
             return jsonify({"error": f"Failed to fetch account equity from Alpaca: {exc}"}), 502
 
-        # Record starting equity once (audit trail only — not used for allocation math)
-        config_repo = PortfolioConfigRepository(current_app.config["DB_SESSION"])
-        if config_repo.get_initial_amount() is None:
-            config_repo.set_initial_amount(Decimal(str(portfolio_value)))
-
     # 5. Calculate share deltas (same for both modes)
     try:
         deltas = calculate_deltas(
@@ -340,6 +335,12 @@ def receive_signal():
                 for d in deltas
             ],
         }), 200
+
+    # Record starting equity once, on the first real (non-dry-run) execution
+    if not is_simulated:
+        config_repo = PortfolioConfigRepository(current_app.config["DB_SESSION"])
+        if config_repo.get_initial_amount() is None:
+            config_repo.set_initial_amount(Decimal(str(portfolio_value)))
 
     # 5.5. Check if no deltas (portfolio already matches target)
     if not deltas:
