@@ -1,3 +1,4 @@
+import logging
 import os
 from flask import Flask
 from dotenv import load_dotenv
@@ -13,6 +14,13 @@ def create_app():
     missing = [v for v in REQUIRED_VARS if not os.getenv(v)]
     if missing:
         raise EnvironmentError(f"Missing required env vars: {', '.join(missing)}")
+
+    # Set up logging — must be called before any logger.info/debug/warning
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
     app = Flask(__name__)
     app.config["ALPACA_API_KEY"]    = os.getenv("ALPACA_API_KEY")
