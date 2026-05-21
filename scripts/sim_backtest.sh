@@ -75,7 +75,7 @@ print(json.dumps({'weights': weights, 'date': sys.argv[2]}))
 
   RAW=$(curl "${CURL_ARGS[@]}" 2>/dev/null || echo '{"error":"connection refused"}\n000')
   HTTP_CODE=$(echo "$RAW" | tail -1)
-  BODY=$(echo "$RAW" | head -n -1)
+  BODY=$(echo "$RAW" | sed '$d')
 
   STATUS=$(python3 -c "
 import json, sys
