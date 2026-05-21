@@ -65,7 +65,7 @@ weights = json.loads(sys.argv[1])
 print(json.dumps({'weights': weights, 'date': sys.argv[2]}))
 " "$WEIGHTS" "$d")
 
-  CURL_ARGS=(-s -w '\n%{http_code}' -X POST "$URL" \
+  CURL_ARGS=(-s --connect-timeout 5 --max-time 30 -w '\n%{http_code}' -X POST "$URL" \
     -H "Content-Type: application/json" \
     -d "$PAYLOAD")
 
