@@ -48,15 +48,19 @@ def _setup_logging() -> None:
 def create_app():
     _setup_logging()
 
-    # Check required env vars at startup, not at runtime
-    missing = [v for v in REQUIRED_VARS if not os.getenv(v)]
-    if missing:
-        raise EnvironmentError(f"Missing required env vars: {', '.join(missing)}")
+    app_mode = os.getenv("TIPORTFOLIO_MODE", "live")
+
+    # Alpaca credentials are only required for live/paper trading
+    if app_mode != "simulated":
+        missing = [v for v in REQUIRED_VARS if not os.getenv(v)]
+        if missing:
+            raise EnvironmentError(f"Missing required env vars: {', '.join(missing)}")
 
     app = Flask(__name__)
-    app.config["ALPACA_API_KEY"]    = os.getenv("ALPACA_API_KEY")
-    app.config["ALPACA_API_SECRET"] = os.getenv("ALPACA_API_SECRET")
-    app.config["ALPACA_MODE"]       = os.getenv("ALPACA_MODE")
+    app.config["APP_MODE"]          = app_mode
+    app.config["ALPACA_API_KEY"]    = os.getenv("ALPACA_API_KEY", "")
+    app.config["ALPACA_API_SECRET"] = os.getenv("ALPACA_API_SECRET", "")
+    app.config["ALPACA_MODE"]       = os.getenv("ALPACA_MODE", "paper")
     app.config["WEBHOOK_SECRET"]    = os.getenv("WEBHOOK_SECRET")
     app.config["ALLOWED_ORIGINS"]   = os.getenv("ALLOWED_ORIGINS", "")
     app.config["SENTRY_DSN"]        = os.getenv("SENTRY_DSN")
@@ -77,6 +81,9 @@ def create_app():
 
     from app.benchmark import bp as benchmark_bp
     app.register_blueprint(benchmark_bp)
+
+    from app.commands import register_commands
+    register_commands(app)
 
     allowed_origins = app.config["ALLOWED_ORIGINS"]
     if allowed_origins:

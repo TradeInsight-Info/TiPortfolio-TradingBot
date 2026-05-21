@@ -22,3 +22,9 @@ logs: ## Tail backend logs
 test: ## Run backend + frontend tests
 	.venv/bin/python -m pytest tests/ -q
 	cd frontend && pnpm test
+
+reset-sim: ## Delete simulated rebalance events (requires TIPORTFOLIO_MODE=simulated in .env)
+	docker compose exec tradingbot flask sim-reset
+
+reset-all: ## Delete ALL rebalance events and portfolio config (requires TIPORTFOLIO_MODE=simulated in .env)
+	docker compose exec tradingbot flask sim-reset --all

@@ -56,3 +56,7 @@ class PortfolioConfigRepository:
                 ))
             else:
                 row.initial_amount = amount
+
+    def delete_all(self) -> None:
+        with self._tx() as session:
+            session.query(PortfolioConfig).delete(synchronize_session=False)
