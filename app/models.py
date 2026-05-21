@@ -25,7 +25,7 @@ class RebalanceEvent(Base):
     #   }
     orders          = Column(JSON, nullable=False)
 
-    status          = Column(String(10), nullable=False)  # "success" / "failed" / "partial"
+    status          = Column(String(10), nullable=False)  # "success" / "failed" / "partial" / "no_change"
     error_message   = Column(Text, nullable=True)
 
     # Index for date range queries

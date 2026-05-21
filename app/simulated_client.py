@@ -59,11 +59,8 @@ class SimulatedAlpacaClient:
         finally:
             session.close()
 
-    def get_positions(self, target_symbols: Set[str] | None = None) -> dict[str, float]:
-        """
-        Build current positions by summing fills from all prior simulated events
-        on or before simulation_date.
-        """
+    def _load_prior_events(self) -> list:
+        """Single DB read for all events up to and including simulation_date."""
         cutoff = datetime(
             self._simulation_date.year,
             self._simulation_date.month,
@@ -72,15 +69,20 @@ class SimulatedAlpacaClient:
             tzinfo=timezone.utc,
         )
         with self._tx() as session:
-            events = (
+            return (
                 session.query(RebalanceEvent)
                 .filter(RebalanceEvent.timestamp <= cutoff)
                 .order_by(RebalanceEvent.timestamp)
                 .all()
             )
 
+    def get_positions(self, target_symbols: Set[str] | None = None) -> dict[str, float]:
+        """
+        Build current positions by summing fills from all prior events
+        on or before simulation_date.
+        """
         positions: dict[str, float] = {}
-        for event in events:
+        for event in self._load_prior_events():
             for order in (event.orders or []):
                 symbol = order.get("symbol")
                 if not symbol:
@@ -93,7 +95,6 @@ class SimulatedAlpacaClient:
                     qty = -qty
                 positions[symbol] = positions.get(symbol, 0.0) + qty
 
-        # Clamp to non-negative (sells can't exceed holdings)
         positions = {k: max(0.0, v) for k, v in positions.items() if v > 0.0}
 
         if target_symbols:
@@ -116,37 +117,37 @@ class SimulatedAlpacaClient:
         """
         Compute equity as cash + market value of current positions.
 
-        cash         = initial_amount - net spend from all prior simulated trades
+        cash         = initial_amount - net spend from all prior trades
         market_value = sum(qty * close_price[simulation_date])
 
         Requires get_latest_prices() to have been called first.
         """
-        positions = self.get_positions()
+        if not self._cached_prices:
+            raise SimulatedDataError("Call get_latest_prices() before get_account_equity().")
 
-        cutoff = datetime(
-            self._simulation_date.year,
-            self._simulation_date.month,
-            self._simulation_date.day,
-            23, 59, 59,
-            tzinfo=timezone.utc,
-        )
-        with self._tx() as session:
-            prior_events = (
-                session.query(RebalanceEvent)
-                .filter(RebalanceEvent.timestamp <= cutoff)
-                .all()
-            )
+        events = self._load_prior_events()
 
+        # Single pass: derive both positions and net cash spent
+        positions: dict[str, float] = {}
         net_cash_spent: float = 0.0
-        for event in prior_events:
+        for event in events:
             for order in (event.orders or []):
-                qty = float(order.get("filled_qty") or 0.0)
+                symbol = order.get("symbol")
+                if not symbol:
+                    continue
+                qty = order.get("filled_qty")
+                if qty is None:
+                    qty = abs(order.get("delta_shares") or 0)
+                qty = float(qty)
                 price = float(order.get("filled_avg_price") or 0.0)
-                if order.get("direction") == "buy":
-                    net_cash_spent += qty * price
+                if order.get("direction") == "sell":
+                    qty = -qty
+                    net_cash_spent -= abs(qty) * price
                 else:
-                    net_cash_spent -= qty * price
+                    net_cash_spent += qty * price
+                positions[symbol] = positions.get(symbol, 0.0) + qty
 
+        positions = {k: max(0.0, v) for k, v in positions.items() if v > 0.0}
         cash = self._initial_amount - net_cash_spent
         market_value = sum(
             qty * self._cached_prices.get(sym, 0.0)
