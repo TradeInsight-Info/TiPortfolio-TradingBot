@@ -160,59 +160,65 @@ def _benchmark_curve(ticker: str, prices: pd.DataFrame, first_date: date) -> pd.
         return pd.Series(dtype=float)
     return cum_returns / cum_returns.iloc[0]
 
-def _bot_equity_curve(events: list, prices: pd.DataFrame) -> pd.Series:
+def _portfolio_value_curve(events: list, prices: pd.DataFrame) -> pd.Series:
     """
-    Reconstruct the bot's normalised equity curve from rebalance events.
+    Compute daily portfolio value in USD as sum(held_qty * close_price).
 
-    Algorithm:
-      For every trading day in `prices` on or after the first rebalance,
-      look up the most-recent rebalance event and weight the symbols'
-      daily returns by that event's target_weights.
-      Cumulatively product the resulting daily portfolio returns to produce
-      a curve that starts at 1.0 on the first rebalance date.
+    Walks rebalance events chronologically to build a running position for
+    each symbol. For each trading day the most-recent snapshot is applied.
+
+    filled_qty is used when available; falls back to abs(delta_shares) for
+    older records that pre-date fill tracking.
     """
     if not events or prices.empty:
         return pd.Series(dtype=float)
 
     events_asc = sorted(events, key=lambda e: e.timestamp)
     first_ts = pd.Timestamp(events_asc[0].timestamp.date())
-
-    # To prevent cached data or yfinance from returning data beyond the expected range.
     prices_from_start = prices.loc[prices.index >= first_ts]
     if prices_from_start.empty:
         return pd.Series(dtype=float)
 
-    daily_returns = prices_from_start.pct_change().fillna(0)
+    # Build a list of (event_date, cumulative_positions) snapshots
+    positions: dict[str, float] = {}
+    snapshots: list[tuple[pd.Timestamp, dict[str, float]]] = []
 
-    portfolio_daily: list[float] = []
+    for ev in events_asc:
+        for order in (ev.orders or []):
+            symbol = order.get("symbol")
+            if not symbol:
+                continue
+            qty = order.get("filled_qty")
+            if qty is None:
+                qty = abs(order.get("delta_shares") or 0)
+            qty = float(qty)
+            if order.get("direction") == "sell":
+                qty = -qty
+            positions[symbol] = positions.get(symbol, 0.0) + qty
+        snapshots.append((pd.Timestamp(ev.timestamp.date()), dict(positions)))
 
-    for row_date in daily_returns.index:
-        # Find the most-recent rebalance event on or before this trading day
-        active_event = None
-        for ev in reversed(events_asc):
-            if pd.Timestamp(ev.timestamp.date()) <= row_date:
-                active_event = ev
+    if not snapshots:
+        return pd.Series(dtype=float)
+
+    values: list[float] = []
+    for row_date in prices_from_start.index:
+        # Most-recent snapshot on or before this date
+        current_pos: dict[str, float] = {}
+        for ts, pos in snapshots:
+            if ts <= row_date:
+                current_pos = pos
+            else:
                 break
 
-        if active_event is None or not active_event.target_weights:
-            portfolio_daily.append(0.0)
-            continue
+        day_value = sum(
+            qty * float(prices_from_start.loc[row_date, sym])
+            for sym, qty in current_pos.items()
+            if qty > 0 and sym in prices_from_start.columns
+            and pd.notna(prices_from_start.loc[row_date, sym])
+        )
+        values.append(day_value if day_value > 0 else float("nan"))
 
-        weights: dict[str, float] = active_event.target_weights
-        portfolio_returns = 0.0
-        for sym, w in weights.items():
-            if sym in daily_returns.columns:
-                portfolio_returns += w * float(daily_returns.loc[row_date, sym])
-        portfolio_daily.append(portfolio_returns)
-
-    returns_series = pd.Series(portfolio_daily, index=daily_returns.index)
-    cumulative = (1 + returns_series).cumprod()
-
-    # Normalise so the curve starts at exactly 1.0
-    if not cumulative.empty and cumulative.iloc[0] != 0:
-        cumulative = cumulative / cumulative.iloc[0]
-
-    return cumulative
+    return pd.Series(values, index=prices_from_start.index).dropna()
 
 
 def _alpaca_equity_curve(first_date: date) -> pd.Series:
@@ -238,9 +244,8 @@ def _alpaca_equity_curve(first_date: date) -> pd.Series:
     if not history or history[0]["equity"] == 0:
         return pd.Series(dtype=float)
 
-    start_equity = history[0]["equity"]
     return pd.Series(
-        [h["equity"] / start_equity for h in history],
+        [h["equity"] for h in history],
         index=pd.to_datetime([h["date"] for h in history]),
     )
 
@@ -311,7 +316,7 @@ def get_benchmark():
         return jsonify({"no_data": True}), 200
 
     bench = _benchmark_curve(raw_ticker, prices, first_date)
-    bot   = _bot_equity_curve(events_asc, prices) if events_asc else _alpaca_equity_curve(first_date)
+    bot   = _portfolio_value_curve(events_asc, prices) if events_asc else _alpaca_equity_curve(first_date)
 
     def _to_list(series: pd.Series) -> list[dict]:
         return [

@@ -5,22 +5,24 @@ Given the current Alpaca positions and a target weight signal, this module
 computes the exact share delta (buy/sell quantity) for each symbol.
 
 Formula:
-    target_shares = floor(portfolio_value * target_weight / current_price)
-    delta         = target_shares - current_shares
+    target_shares = round(portfolio_value * target_weight / current_price, 6)
+    delta         = round(target_shares - current_shares, 6)
 
 Rules:
   - Symbol in target but not held    -> positive delta (buy)
   - Symbol held but absent in target -> negative delta (full sell)
+  - |delta| < MIN_TRADE_SHARES       -> excluded (noise suppression)
   - Delta == 0                       -> excluded from result
 """
 
 from __future__ import annotations
 
-import math
 import logging
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+MIN_TRADE_SHARES = 0.001
 
 @dataclass(frozen=True)
 class OrderDelta:
@@ -29,15 +31,15 @@ class OrderDelta:
 
     Attributes:
         symbol:        Stock symbol, e.g. "SPY"
-        delta:         Signed integer share change.
+        delta:         Signed fractional share change.
                        Positive -> buy, Negative -> sell.
         current_shares: Shares currently held.
-        target_shares:  Whole shares the portfolio should hold after rebalance.
+        target_shares:  Fractional shares the portfolio should hold after rebalance.
     """
     symbol: str
-    delta: int
+    delta: float
     current_shares: float
-    target_shares: int
+    target_shares: float
 
 
 def calculate_deltas(
@@ -96,19 +98,16 @@ def calculate_deltas(
                 raise ValueError(
                     f"Price for {symbol!r} must be positive, got {price!r}."
                 )
-            # floor ensures the target is a whole number of shares
-            target_shares = math.floor(portfolio_value * target_weight / price)
+            target_shares = round(portfolio_value * target_weight / price, 6)
 
-        # int() truncates any fractional qty to ensure delta is a whole-share order
-        delta = target_shares - int(current_shares)
+        delta = round(target_shares - current_shares, 6)
 
-        # skip zero deltas
-        if delta == 0:
-            logger.debug("No trade needed for %s (delta=0)", symbol)
+        if abs(delta) < MIN_TRADE_SHARES:
+            logger.debug("Skipping tiny delta for %s (delta=%g)", symbol, delta)
             continue
 
         logger.info(
-            "Delta for %s: current=%.2f target=%d delta=%+d",
+            "Delta for %s: current=%g target=%g delta=%+g",
             symbol, current_shares, target_shares, delta,
         )
         

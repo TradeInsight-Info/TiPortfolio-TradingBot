@@ -24,7 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from flask import Blueprint, current_app, jsonify, request
@@ -32,7 +32,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.alpaca_client import AlpacaClient, AlpacaError
 from app.calculator import calculate_deltas
-from app.order_executor import OrderExecutor
+from app.order_executor import ExecutionResult, OrderExecutor, OrderResult
 from app.portfolio_config import PortfolioConfigRepository
 from app.rebalance import RebalanceRepository
 
@@ -160,7 +160,7 @@ def _format_order_public(order: dict) -> dict:
     return {
         "symbol":    order["symbol"],
         "direction": order["direction"],
-        "shares":    abs(order["delta_shares"]),  # always a positive integer
+        "shares":    abs(order["delta_shares"]),
         "status":           order.get("status"),
         # Fill fields - may be None until the order reaches a terminal state
         "fill_status":      order.get("fill_status"),
@@ -198,11 +198,16 @@ def receive_signal():
         Requires 'Authorization: Bearer <token>' header.
         Token must match WEBHOOK_SECRET env var.
         The secret is never logged or included in any response body.
-    
+
+    Query params:
+        dry_run (optional): "true" | "1" | "yes" — fetch live Alpaca state and compute
+            deltas, but skip order submission and DB write. Returns 200 with delta preview.
+
     Expected body:
         {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}}
 
     Responses:
+        200 OK    - dry_run=true; delta preview returned, nothing persisted.
         202 Accepted - rebalance attempted; record saved; record returned in body.
         400 Bad Request - payload is malformed or weights are invalid.
         401 Unauthorized - WEBHOOK_SECRET configured and Authorization header is missing or wrong.
@@ -235,41 +240,71 @@ def receive_signal():
         received_at.isoformat(), payload_hash,
     )
 
-    # 2. Fetch current positions from Alpaca
     target_weights: dict[str, float] = body["weights"]
-    try:
-        alpaca = AlpacaClient(
-            api_key=current_app.config["ALPACA_API_KEY"],
-            api_secret=current_app.config["ALPACA_API_SECRET"],
-            mode=current_app.config["ALPACA_MODE"],
+    alpaca: AlpacaClient | None = None
+
+    is_simulated = current_app.config.get("APP_MODE") == "simulated"
+    simulation_date: date | None = None
+
+    if is_simulated:
+        # 2-4. Simulated: derive positions/prices/equity from DB + yfinance
+        raw_date = body.get("date")
+        if raw_date:
+            try:
+                simulation_date = date.fromisoformat(raw_date)
+            except ValueError:
+                return jsonify({"error": f"Invalid 'date': {raw_date!r}. Expected YYYY-MM-DD."}), 400
+        else:
+            simulation_date = date.today()
+
+        from app.simulated_client import SimulatedAlpacaClient, SimulatedDataError
+
+        config_repo = PortfolioConfigRepository(current_app.config["DB_SESSION"])
+        initial_amount = float(config_repo.get_initial_amount() or 10000)
+
+        sim_client = SimulatedAlpacaClient(
+            session_factory=current_app.config["DB_SESSION"],
+            simulation_date=simulation_date,
+            initial_amount=initial_amount,
         )
-        current_positions = alpaca.get_positions(
-            target_symbols=set(target_weights.keys())
-        )
-    except AlpacaError as exc:
-        logger.error("Alpaca positions fetch failed | hash=%s error=%s", payload_hash, exc)
-        return jsonify({"error": f"Failed to fetch positions from Alpaca: {exc}"}), 502
+        try:
+            current_positions = sim_client.get_positions(target_symbols=set(target_weights.keys()))
+            current_prices    = sim_client.get_latest_prices(set(target_weights.keys()))
+            portfolio_value   = sim_client.get_account_equity()
+        except SimulatedDataError as exc:
+            logger.error("Simulated price fetch failed | hash=%s error=%s", payload_hash, exc)
+            return jsonify({"error": f"Simulated price fetch failed: {exc}"}), 502
 
-    # 3. Fetch current prices
-    try:
-        current_prices = alpaca.get_latest_prices(set(target_weights.keys()))
-    except AlpacaError as exc:
-        logger.error("Alpaca price fetch failed | hash=%s error=%s", payload_hash, exc)
-        return jsonify({"error": f"Failed to fetch prices from Alpaca: {exc}"}), 502
+    else:
+        # 2. Fetch current positions from Alpaca
+        try:
+            alpaca = AlpacaClient(
+                api_key=current_app.config["ALPACA_API_KEY"],
+                api_secret=current_app.config["ALPACA_API_SECRET"],
+                mode=current_app.config["ALPACA_MODE"],
+            )
+            current_positions = alpaca.get_positions(
+                target_symbols=set(target_weights.keys())
+            )
+        except AlpacaError as exc:
+            logger.error("Alpaca positions fetch failed | hash=%s error=%s", payload_hash, exc)
+            return jsonify({"error": f"Failed to fetch positions from Alpaca: {exc}"}), 502
 
-    # 4. Fetch live account equity for delta calculation
-    try:
-        portfolio_value = alpaca.get_account_equity()
-    except AlpacaError as exc:
-        logger.error("Alpaca account fetch failed | hash=%s error=%s", payload_hash, exc)
-        return jsonify({"error": f"Failed to fetch account equity from Alpaca: {exc}"}), 502
+        # 3. Fetch current prices
+        try:
+            current_prices = alpaca.get_latest_prices(set(target_weights.keys()))
+        except AlpacaError as exc:
+            logger.error("Alpaca price fetch failed | hash=%s error=%s", payload_hash, exc)
+            return jsonify({"error": f"Failed to fetch prices from Alpaca: {exc}"}), 502
 
-    # Record starting equity once (audit trail only — not used for allocation math)
-    config_repo = PortfolioConfigRepository(current_app.config["DB_SESSION"])
-    if config_repo.get_initial_amount() is None:
-        config_repo.set_initial_amount(Decimal(str(portfolio_value)))
+        # 4. Fetch live account equity for delta calculation
+        try:
+            portfolio_value = alpaca.get_account_equity()
+        except AlpacaError as exc:
+            logger.error("Alpaca account fetch failed | hash=%s error=%s", payload_hash, exc)
+            return jsonify({"error": f"Failed to fetch account equity from Alpaca: {exc}"}), 502
 
-    # 5. Calculate share deltas
+    # 5. Calculate share deltas (same for both modes)
     try:
         deltas = calculate_deltas(
             portfolio_value=portfolio_value,
@@ -281,16 +316,46 @@ def receive_signal():
         logger.error("Delta calculation error | hash=%s error=%s", payload_hash, exc)
         return jsonify({"error": f"Delta calculation failed: {exc}"}), 400
 
+    # Dry-run: return computed deltas without submitting orders or writing to DB
+    if request.args.get("dry_run", "").lower() in ("1", "true", "yes"):
+        logger.info("Dry-run mode | hash=%s deltas=%d", payload_hash, len(deltas))
+        return jsonify({
+            "dry_run":         True,
+            "received_at":     received_at.isoformat(),
+            "payload_hash":    payload_hash,
+            "portfolio_value": portfolio_value,
+            "deltas": [
+                {
+                    "symbol":         d.symbol,
+                    "direction":      "buy" if d.delta > 0 else "sell",
+                    "delta_shares":   d.delta,
+                    "current_shares": d.current_shares,
+                    "target_shares":  d.target_shares,
+                }
+                for d in deltas
+            ],
+        }), 200
+
+    # Record starting equity once, on the first real (non-dry-run) execution
+    if not is_simulated:
+        config_repo = PortfolioConfigRepository(current_app.config["DB_SESSION"])
+        if config_repo.get_initial_amount() is None:
+            config_repo.set_initial_amount(Decimal(str(portfolio_value)))
+
     # 5.5. Check if no deltas (portfolio already matches target)
     if not deltas:
         logger.info("No deltas — portfolio already matches target | hash=%s", payload_hash)
         repo = RebalanceRepository(current_app.config["DB_SESSION"])
+        if simulation_date is not None:
+            event_ts = datetime(simulation_date.year, simulation_date.month, simulation_date.day, tzinfo=timezone.utc)
+        else:
+            event_ts = received_at
         saved_event = repo.save(
             target_weights=target_weights,
             orders=[],
             status="no_change",
             error_message=None,
-            timestamp=received_at,
+            timestamp=event_ts,
         )
         return jsonify({
             "status": "no_change",
@@ -299,19 +364,39 @@ def receive_signal():
             "rebalance_event": _event_to_dict(saved_event),
         }), 202
 
-    # 6. Submit orders to Alpaca (OrderExecutor also does a fill poll)
-    executor = OrderExecutor(
-        api_key=current_app.config["ALPACA_API_KEY"],
-        api_secret=current_app.config["ALPACA_API_SECRET"],
-        base_url=alpaca._base_url,
-        alpaca_client=alpaca,           # used internally for fill polling
-    )
-    execution_result = executor.execute(deltas)
+    # 6. Execute orders
+    if is_simulated:
+        # Simulated: immediately mark all orders as filled at yfinance close price
+        order_results = [
+            OrderResult(
+                symbol=d.symbol,
+                side="buy" if d.delta > 0 else "sell",
+                qty=abs(d.delta),
+                success=True,
+                fill_status="filled",
+                filled_qty=float(abs(d.delta)),
+                filled_avg_price=current_prices[d.symbol],
+            )
+            for d in deltas
+        ]
+        execution_result = ExecutionResult(orders=order_results, status="success")
+    else:
+        # Live: submit to Alpaca and poll for fills
+        assert alpaca is not None  # guaranteed when not is_simulated
+        executor = OrderExecutor(
+            api_key=current_app.config["ALPACA_API_KEY"],
+            api_secret=current_app.config["ALPACA_API_SECRET"],
+            base_url=alpaca._base_url,
+            alpaca_client=alpaca,
+        )
+        execution_result = executor.execute(deltas, signal_hash=payload_hash)
 
     # 7. Persist the full rebalance record to DB
-    # This block runs AFTER order submission - whether orders succeeded or failed.
-    # The record is always written so every decision is auditable.
     db_orders = _serialize_orders_for_db(deltas, execution_result.orders, portfolio_value)
+    if simulation_date is not None:
+        event_ts = datetime(simulation_date.year, simulation_date.month, simulation_date.day, tzinfo=timezone.utc)
+    else:
+        event_ts = received_at
 
     try:
         repo = RebalanceRepository(current_app.config["DB_SESSION"])
@@ -320,7 +405,7 @@ def receive_signal():
             orders=db_orders,
             status=execution_result.status,
             error_message=execution_result.error_message,
-            timestamp=received_at,
+            timestamp=event_ts,
         )
     except SQLAlchemyError as exc:
         logger.error("DB write failed | hash=%s error=%s", payload_hash, exc)

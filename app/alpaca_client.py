@@ -15,7 +15,7 @@ Responsibilities:
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import requests
 from typing import Set
 
@@ -202,7 +202,7 @@ class AlpacaClient:
         for ts, eq in zip(body.get("timestamp", []), body.get("equity", [])):
             if eq is not None and float(eq) > 0:
                 result.append({
-                    "date":   datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d"),
+                    "date":   datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d"),
                     "equity": float(eq),
                 })
         return result
@@ -252,6 +252,27 @@ class AlpacaClient:
             body.get("filled_avg_price"),
         )
         return body
+
+    def get_order_by_client_id(self, client_order_id: str) -> dict:
+        """
+        Fetch an order by the client_order_id assigned at submission time.
+
+        Uses the trading API endpoint:
+            GET /v2/orders:by_client_order_id?client_order_id=<id>
+
+        Called when a POST /v2/orders returns 422 with a duplicate
+        client_order_id, indicating the order was already accepted on a
+        prior attempt (e.g. after a network timeout).
+
+        Returns:
+            Raw JSON dict from Alpaca containing the full order object.
+
+        Raises:
+            AlpacaError: on network failure or non-2xx response.
+        """
+        url = f"{self._base_url}/v2/orders:by_client_order_id?client_order_id={client_order_id}"
+        logger.info("Fetching order by client_order_id=%s", client_order_id)
+        return self._get(url)
 
     # Internal helpers
     def _get(self, url: str) -> dict | list:
