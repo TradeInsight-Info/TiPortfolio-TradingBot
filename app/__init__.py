@@ -1,4 +1,7 @@
+import logging
+import logging.config
 import os
+
 from flask import Flask
 from dotenv import load_dotenv
 from app.database import init_db
@@ -8,7 +11,43 @@ load_dotenv()
 
 REQUIRED_VARS = ["ALPACA_API_KEY", "ALPACA_API_SECRET", "ALPACA_MODE"]
 
+def _setup_logging() -> None:
+    log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    logging.config.dictConfig({
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "standard": {
+                # Single consistent format for all loggers
+                "format": "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "standard",
+                "stream": "ext://sys.stdout",
+            },
+        },
+        "root": {
+            "level": log_level,
+            "handlers": ["console"],
+        },
+        # Suppress werkzeug's own internal timestamp (the bracket part)
+        # by overriding its logger — level stays INFO, format is controlled by us
+        "loggers": {
+            "werkzeug": {
+                "level": log_level,
+                "handlers": ["console"],
+                "propagate": False,  # prevent double-printing
+            },
+        },
+    })
+
 def create_app():
+    _setup_logging()
+
     # Check required env vars at startup, not at runtime
     missing = [v for v in REQUIRED_VARS if not os.getenv(v)]
     if missing:
@@ -43,5 +82,14 @@ def create_app():
     if allowed_origins:
         from flask_cors import CORS
         CORS(app, origins=allowed_origins.split(","), methods=["GET"])
+
+    # Log the active trading mode so the operator can confirm 
+    # which account (paper or live) is active without inspecting the env file.
+    logging.getLogger(__name__).info(
+        "Alpaca trading mode: %s  (base URL: %s)",
+        app.config["ALPACA_MODE"],
+        "https://paper-api.alpaca.markets" if app.config["ALPACA_MODE"] == "paper"
+        else "https://api.alpaca.markets",
+    )
 
     return app
