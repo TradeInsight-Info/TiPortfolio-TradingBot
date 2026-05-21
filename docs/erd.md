@@ -9,6 +9,8 @@ erDiagram
         json        orders                "array of ORDER_ENTRY (see below)"
         varchar10   status                "success | partial | failed | no_change"
         text        error_message         "null on success"
+        varchar10   source                "live | simulated (default: live)"
+        date        simulation_date       "set for simulated events; null for live"
     }
 
     ORDER_ENTRY {
