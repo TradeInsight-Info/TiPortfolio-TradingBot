@@ -1,5 +1,7 @@
 import logging
+import logging.config
 import os
+
 from flask import Flask
 from dotenv import load_dotenv
 from app.database import init_db
@@ -9,18 +11,47 @@ load_dotenv()
 
 REQUIRED_VARS = ["ALPACA_API_KEY", "ALPACA_API_SECRET", "ALPACA_MODE"]
 
+def _setup_logging() -> None:
+    log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    logging.config.dictConfig({
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "standard": {
+                # Single consistent format for all loggers
+                "format": "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "standard",
+                "stream": "ext://sys.stdout",
+            },
+        },
+        "root": {
+            "level": log_level,
+            "handlers": ["console"],
+        },
+        # Suppress werkzeug's own internal timestamp (the bracket part)
+        # by overriding its logger — level stays INFO, format is controlled by us
+        "loggers": {
+            "werkzeug": {
+                "level": log_level,
+                "handlers": ["console"],
+                "propagate": False,  # prevent double-printing
+            },
+        },
+    })
+
 def create_app():
+    _setup_logging()
+
     # Check required env vars at startup, not at runtime
     missing = [v for v in REQUIRED_VARS if not os.getenv(v)]
     if missing:
         raise EnvironmentError(f"Missing required env vars: {', '.join(missing)}")
-
-    # Set up logging — must be called before any logger.info/debug/warning
-    logging.basicConfig(
-        level=os.getenv("LOG_LEVEL", "INFO").upper(),
-        format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
 
     app = Flask(__name__)
     app.config["ALPACA_API_KEY"]    = os.getenv("ALPACA_API_KEY")
