@@ -1,7 +1,7 @@
 import { useBenchmark } from "../hooks/useBenchmark";
 
 function computeMetrics(dateSeries) {
-  if (!dateSeries || dateSeries.length < 10) return null;
+  if (!dateSeries || dateSeries.length < 3) return null;
 
   const first = dateSeries[0].value;
   if (!first || first <= 0) return null;
