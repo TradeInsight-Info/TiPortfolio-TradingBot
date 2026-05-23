@@ -292,22 +292,14 @@ def get_benchmark():
     # end must be at least one day after start so yfinance has a valid range
     end_date   = today + timedelta(days=1)
 
-    # Collect every symbol the bot has ever traded
-    bot_symbols: set[str] = set()
-    for ev in events_asc:
-        if ev.target_weights:
-            bot_symbols.update(ev.target_weights.keys())
-
     bench_symbols = (
         list(COMPOSITE_COMPONENTS.keys())
         if raw_ticker == "QQQ+GLD+BIL"
         else [raw_ticker]
     )
 
-    # Fetch all symbols together in one yfinance call (cached)
-    all_symbols = sorted(bot_symbols | set(bench_symbols))
     try:
-        prices = _get_prices(all_symbols, first_date, end_date)
+        prices = _get_prices(bench_symbols, first_date, end_date)
     except Exception as exc:
         logger.error("yfinance price fetch failed: %s", exc)
         return jsonify({"error": f"Failed to fetch price data: {exc}"}), 502
@@ -316,7 +308,7 @@ def get_benchmark():
         return jsonify({"no_data": True}), 200
 
     bench = _benchmark_curve(raw_ticker, prices, first_date)
-    bot   = _portfolio_value_curve(events_asc, prices) if events_asc else _alpaca_equity_curve(first_date)
+    bot   = _alpaca_equity_curve(first_date)
 
     def _to_list(series: pd.Series) -> list[dict]:
         return [
