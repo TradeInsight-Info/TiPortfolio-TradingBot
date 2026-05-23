@@ -230,6 +230,7 @@ class TestGetLastSuccessful:
     def test_ignores_no_change_events(self, repo, sample_weights, sample_orders):
         success = repo.save(
             target_weights=sample_weights, orders=sample_orders, status="success",
+            timestamp=datetime.now(timezone.utc) - timedelta(seconds=1),
         )
         repo.save(target_weights=sample_weights, orders=[], status="no_change")
         result = repo.get_last_successful()
