@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import BenchmarkChart from "./components/BenchmarkChart";
 import DeltaTable from "./components/DeltaTable";
 import IntroSection from "./components/IntroSection";
+import PositionSummary from "./components/PositionSummary";
 import { useTheme } from "./hooks/useTheme";
 
 function App() {
@@ -62,6 +63,7 @@ function App() {
           All rebalance decisions made by the algorithm, sorted by most recent
           first.
         </p>
+        <PositionSummary />
         <DeltaTable />
       </section>
 
