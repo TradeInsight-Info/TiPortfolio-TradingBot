@@ -307,8 +307,14 @@ def get_benchmark():
     if prices.empty:
         return jsonify({"no_data": True}), 200
 
-    bench = _benchmark_curve(raw_ticker, prices, first_date)
     bot   = _alpaca_equity_curve(first_date)
+
+    # Align benchmark normalisation to bot's first actual data date so all
+    # series start from the same point on the chart.
+    if not bot.empty:
+        bench = _benchmark_curve(raw_ticker, prices, bot.index[0].date())
+    else:
+        bench = _benchmark_curve(raw_ticker, prices, first_date)
 
     def _to_list(series: pd.Series) -> list[dict]:
         return [
