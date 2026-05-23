@@ -1,5 +1,4 @@
 import { useBenchmark } from "../hooks/useBenchmark";
-import { useConfig } from "../hooks/useConfig";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
@@ -52,10 +51,8 @@ function scaleToUsd(rows, initialAmount) {
 export default function BenchmarkChart() {
   const spy = useBenchmark("SPY");
   const qqq = useBenchmark("QQQ");
-  const config = useConfig();
-
-  const loading = spy.loading || qqq.loading || config.loading;
-  const error = spy.error || qqq.error || config.error;
+  const loading = spy.loading || qqq.loading;
+  const error = spy.error || qqq.error;
   const noData = spy.data?.no_data || qqq.data?.no_data;
 
   if (loading) {
@@ -87,8 +84,9 @@ export default function BenchmarkChart() {
   }
 
   const merged = mergeSeries(spy.data.bot ?? [], spy.data.benchmark, qqq.data.benchmark);
-  const isUsd = config.initialAmount != null;
-  const chartData = isUsd ? scaleToUsd(merged, config.initialAmount) : merged;
+  const botFirstValue = spy.data.bot?.[0]?.value;
+  const isUsd = botFirstValue != null;
+  const chartData = isUsd ? scaleToUsd(merged, botFirstValue) : merged;
   const hasBot = merged.some(d => d.bot != null);
   const fmt = isUsd ? formatUsd : formatMultiplier;
 
@@ -157,7 +155,7 @@ export default function BenchmarkChart() {
 
       <p className="text-xs text-gray-400 mt-2 text-right">
         {isUsd
-          ? <>Portfolio value (USD, log scale); seeded with {formatUsd(config.initialAmount)} on {spy.data.first_rebalance_date}</>
+          ? <>Portfolio value (USD, log scale); seeded with {formatUsd(botFirstValue)} on {spy.data.first_rebalance_date}</>
           : <>Normalised return (log scale) from {spy.data.first_rebalance_date}</>
         }
         {!hasBot && " — TiPortfolio Strategy line appears after first rebalance"}.
