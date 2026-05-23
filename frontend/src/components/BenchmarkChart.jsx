@@ -83,7 +83,9 @@ export default function BenchmarkChart() {
     );
   }
 
-  const merged = mergeSeries(spy.data.bot ?? [], spy.data.benchmark, qqq.data.benchmark);
+  const rawMerged = mergeSeries(spy.data.bot ?? [], spy.data.benchmark, qqq.data.benchmark);
+  // Trim to dates where benchmark data exists so bot line never extends past SPY/QQQ
+  const merged = rawMerged.filter(d => d.spy != null);
   const botFirstValue = spy.data.bot?.[0]?.value;
   const isUsd = botFirstValue != null;
   const chartData = isUsd ? scaleToUsd(merged, botFirstValue) : merged;
