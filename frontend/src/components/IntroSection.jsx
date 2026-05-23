@@ -3,15 +3,17 @@ export default function IntroSection() {
     <div className="text-center max-w-2xl px-4">
       <h1 className="text-5xl font-bold mb-4">TiPortfolio Demo</h1>
       <p className="text-xl text-muted-foreground mb-6">
-        Can an ETF-based portfolio optimisation strategy beat the market?
+        Can a volatility-driven rebalancing strategy beat a simple buy-and-hold
+        QQQ or SPY?
       </p>
       <p className="text-base text-muted-foreground mb-10 leading-relaxed">
         This is a live paper-trading bot built on top of the TiPortfolio
         library that rebalances based on market volatility signals. It holds
         a basket of ETFs, rebalances when volatility signals a change, and
-        records every trade. Currently running on a paper trading account —
+        records every trade. Performance is tracked against a passive
+        buy-and-hold SPY and QQQ strategy so you can see whether active
+        rebalancing adds value. Currently running on a paper trading account —
         we plan to switch to live real-money trading within 3 to 12 months.
-        Results are shown below.
       </p>
       <div className="flex gap-4 justify-center flex-wrap">
         <a
