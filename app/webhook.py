@@ -601,3 +601,24 @@ def get_config():
         "initial_amount": float(row.initial_amount),
         "recorded_at":    row.recorded_at.isoformat(),
     }), 200
+
+
+@bp.route("/market/clock", methods=["GET"])
+def market_clock():
+    """
+    Return Alpaca market clock. No auth required — read-only.
+
+    Responses:
+        200 - {is_open: bool, next_open: str, next_close: str, timestamp: str}
+        502 - Alpaca unreachable
+    """
+    client = AlpacaClient(
+        current_app.config["ALPACA_API_KEY"],
+        current_app.config["ALPACA_API_SECRET"],
+        current_app.config["ALPACA_MODE"],
+    )
+    try:
+        clock = client.get_clock()
+    except AlpacaError as exc:
+        return jsonify({"error": str(exc)}), 502
+    return jsonify(clock), 200

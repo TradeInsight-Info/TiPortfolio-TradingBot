@@ -319,6 +319,10 @@ class AlpacaClient:
         return self._get(url)
 
     # Internal helpers
+    def get_clock(self) -> dict:
+        """Return Alpaca market clock: {is_open, next_open, next_close, timestamp}."""
+        return self._get(f"{self._base_url}/v2/clock")
+
     def _get(self, url: str) -> dict | list:
         """
         Perform a GET request and return the parsed JSON body.
