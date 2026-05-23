@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 
 from unittest.mock import MagicMock, patch
@@ -23,6 +24,28 @@ os.environ["ALPACA_MODE"]       = "paper"
 os.environ["DATABASE_URL"]      = "sqlite:///:memory:"
 
 from app import create_app  # noqa: E402
+
+
+@pytest.fixture()
+def app():
+    """Function-scoped Flask app with its own in-memory SQLite DB and WEBHOOK_SECRET."""
+    os.environ["WEBHOOK_SECRET"] = "test-secret"
+    flask_app = create_app()
+    flask_app.config["TESTING"] = True
+    return flask_app
+
+
+@pytest.fixture()
+def seeded_success_event(app):
+    """Seed one successful rebalance so symbol-change tests have a baseline."""
+    from app.rebalance import RebalanceRepository
+    with app.app_context():
+        repo = RebalanceRepository(app.config["DB_SESSION"])
+        repo.save(
+            target_weights={"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10},
+            orders=[],
+            status="success",
+        )
 
 
 @pytest.fixture()
@@ -185,3 +208,41 @@ class TestPortfolioEquityAndAudit:
         post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
         config = fresh_client.get("/config").get_json()
         assert config["initial_amount"] == 10_000.0
+
+
+class TestSymbolUniverseWarning:
+    def test_no_warning_on_first_rebalance(self, app, mock_alpaca, caplog):
+        # No prior events in DB → no warning
+        with app.test_client() as client:
+            with caplog.at_level(logging.WARNING, logger="app.webhook"):
+                resp = client.post(
+                    "/webhook",
+                    json={"weights": {"SPY": 0.6, "QQQ": 0.4}},
+                    headers={"Authorization": "Bearer test-secret"},
+                )
+        assert resp.status_code == 202
+        assert "symbol_universe_changed" not in caplog.text
+
+    def test_warning_when_symbols_change(self, app, mock_alpaca, caplog, seeded_success_event):
+        # seeded_success_event has target_weights {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}
+        # Incoming payload has SPY — universe changed
+        with app.test_client() as client:
+            with caplog.at_level(logging.WARNING, logger="app.webhook"):
+                resp = client.post(
+                    "/webhook",
+                    json={"weights": {"SPY": 1.0}},
+                    headers={"Authorization": "Bearer test-secret"},
+                )
+        assert resp.status_code == 202
+        assert "symbol_universe_changed" in caplog.text
+
+    def test_no_warning_when_symbols_same(self, app, mock_alpaca, caplog, seeded_success_event):
+        with app.test_client() as client:
+            with caplog.at_level(logging.WARNING, logger="app.webhook"):
+                resp = client.post(
+                    "/webhook",
+                    json={"weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                    headers={"Authorization": "Bearer test-secret"},
+                )
+        assert resp.status_code == 202
+        assert "symbol_universe_changed" not in caplog.text
