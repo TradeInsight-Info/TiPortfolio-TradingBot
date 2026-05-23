@@ -1,8 +1,7 @@
 import { usePositions } from "../hooks/usePositions";
 
 function formatCurrency(value) {
-  if (value == null || Number.isNaN(Number(value))) return "—";
-  return `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+  if (value == null || Number.isNaN(Number(value))) return "—";  return `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 }
 
 function formatPct(value, equity) {
@@ -33,7 +32,6 @@ export default function PositionSummary() {
   if (!data) return null;
 
   const { positions = [], equity, cash, stale } = data;
-
   return (
     <div className="rounded-lg border border-border bg-card p-4 mb-6">
       <div className="flex items-center justify-between mb-3">
@@ -44,8 +42,7 @@ export default function PositionSummary() {
           {stale && (
             <span className="text-yellow-600 dark:text-yellow-400 font-medium">
               <span aria-hidden="true">⚠ </span>stale
-            </span>
-          )}
+            </span>          )}
           <span>Equity: {formatCurrency(equity)}</span>
           <span>·</span>
           <span>Cash: {formatCurrency(cash)}</span>
