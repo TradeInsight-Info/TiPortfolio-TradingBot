@@ -23,6 +23,22 @@ _cache: dict = {}  # keys: "data" (response dict), "fetched_at" (datetime)
 
 @bp.get("/positions")
 def get_positions():
+    """
+    Return live Alpaca positions, equity, and cash.
+
+    Cached for 1 hour. Serves stale data with ``"stale": true`` if Alpaca
+    is unreachable but a prior response exists. Returns 503 only when
+    Alpaca is down and no cached response exists.
+
+    Response shape::
+
+        {
+            "positions": [{"symbol", "qty", "market_value", "avg_entry_price"}],
+            "equity":    float,
+            "cash":      float,
+            "as_of":     ISO 8601 timestamp of last successful fetch
+        }
+    """
     now = datetime.now(timezone.utc)
 
     if _cache and (now - _cache["fetched_at"]).total_seconds() < _CACHE_TTL_SECONDS:
@@ -48,6 +64,5 @@ def get_positions():
         "cash":      account["cash"],
         "as_of":     now.isoformat(),
     }
-    _cache["data"]       = data
-    _cache["fetched_at"] = now
+    _cache.update({"data": data, "fetched_at": now})
     return jsonify(data), 200

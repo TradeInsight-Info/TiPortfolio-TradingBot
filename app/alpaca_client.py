@@ -152,9 +152,20 @@ class AlpacaClient:
         return prices
 
     def list_positions_full(self) -> list[dict]:
+        """
+        Fetch all current positions with full detail for the /positions display endpoint.
+
+        Returns:
+            List of dicts: [{"symbol", "qty", "market_value", "avg_entry_price"}, ...]
+            Empty list when no positions are held.
+
+        Raises:
+            AlpacaError: on network or API failure.
+        """
         url = f"{self._base_url}/v2/positions"
         logger.info("Fetching full positions from Alpaca (%s)", self._mode)
         raw = self._get(url)
+        assert isinstance(raw, list)
         return [
             {
                 "symbol":          p["symbol"],
@@ -166,9 +177,19 @@ class AlpacaClient:
         ]
 
     def get_account(self) -> dict:
+        """
+        Fetch equity and cash from /v2/account.
+
+        Returns:
+            {"equity": float, "cash": float}
+
+        Raises:
+            AlpacaError: on network or API failure.
+        """
         url = f"{self._base_url}/v2/account"
         logger.info("Fetching account state from Alpaca (%s)", self._mode)
         body = self._get(url)
+        assert isinstance(body, dict)
         return {
             "equity": float(body["equity"]),
             "cash":   float(body["cash"]),
