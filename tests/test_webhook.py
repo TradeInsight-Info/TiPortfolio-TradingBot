@@ -85,6 +85,7 @@ def mock_alpaca():
 
 @pytest.fixture(scope="module")
 def client():
+    os.environ["WEBHOOK_SECRET"] = "test-secret"
     app = create_app()
     app.config["TESTING"] = True
     with app.test_client() as c:
@@ -95,6 +96,7 @@ def post_webhook(client, payload):
         "/webhook",
         data=json.dumps(payload),
         content_type="application/json",
+        headers={"Authorization": "Bearer test-secret"},
     )
 
 # Happy Path
@@ -103,8 +105,8 @@ class TestValidPayload:
         res = post_webhook(client, {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}})
         assert res.status_code == 202
 
-    def test_body_contains_status_success(self, client, mock_alpaca):
-        res = post_webhook(client, {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}})
+    def test_body_contains_status_success(self, fresh_client, mock_alpaca):
+        res = post_webhook(fresh_client, {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}})
         assert res.get_json()["status"] == "success"
 
     def test_body_contains_received_at(self, client, mock_alpaca):
@@ -122,13 +124,13 @@ class TestValidPayload:
         expected = hashlib.sha256(canonical.encode()).hexdigest()
         assert data["payload_hash"] == expected
 
-    def test_weights_summing_to_exactly_1_202(self, client, mock_alpaca):
-        res = post_webhook(client, {"weights": {"A": 1.0}})
+    def test_weights_summing_to_exactly_1_202(self, fresh_client, mock_alpaca):
+        res = post_webhook(fresh_client, {"weights": {"A": 1.0}})
         assert res.status_code == 202
 
-    def test_weights_within_tolerance_202(self, client, mock_alpaca):
+    def test_weights_within_tolerance_202(self, fresh_client, mock_alpaca):
         # 0.999 is within ±0.01 of 1.0
-        res = post_webhook(client, {"weights": {"SPY": 0.5, "QQQ": 0.499}})
+        res = post_webhook(fresh_client, {"weights": {"SPY": 0.5, "QQQ": 0.499}})
         assert res.status_code == 202
 
 # Validation errors - 400 
@@ -166,12 +168,14 @@ class TestInvalidPayload:
             "/webhook",
             data="not-json",
             content_type="text/plain",
+            headers={"Authorization": "Bearer test-secret"},
         )
         assert res.status_code == 400
         assert "JSON" in res.get_json()["error"]
 
     def test_empty_body(self, client):
-        res = client.post("/webhook", data="", content_type="application/json")
+        res = client.post("/webhook", data="", content_type="application/json",
+                         headers={"Authorization": "Bearer test-secret"})
         assert res.status_code == 400
 
     def test_weights_sum_exceeds_tolerance(self, client):
@@ -183,6 +187,7 @@ class TestInvalidPayload:
 @pytest.fixture()
 def fresh_client():
     """Function-scoped client — each test gets a new in-memory DB."""
+    os.environ["WEBHOOK_SECRET"] = "test-secret"
     app = create_app()
     app.config["TESTING"] = True
     with app.test_client() as c:

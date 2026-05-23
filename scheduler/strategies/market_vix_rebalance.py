@@ -205,6 +205,23 @@ def send_webhook(base_url: str, weights: dict[str, float], timeout: float = 10.0
 
 
 # ---------------------------------------------------------------------------
+# Market calendar guard
+# ---------------------------------------------------------------------------
+
+
+def is_market_open(webhook_base: str, timeout: float = 5.0) -> bool:
+    """Return True if the market is currently open according to the backend clock."""
+    url = webhook_base.rstrip("/") + "/market/clock"
+    try:
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+        return bool(resp.json().get("is_open", False))
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("Could not reach market clock endpoint (%s); proceeding anyway: %s", url, exc)
+        return True  # fail-open: don't block trades if clock check fails
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -231,6 +248,10 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     args = _parse_args()
+
+    if not is_market_open(args.webhook):
+        logger.info("Market is closed today — skipping rebalance.")
+        return 0
 
     output = run_strategy(start=args.start, end=args.end)
 
