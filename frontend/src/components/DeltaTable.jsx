@@ -183,7 +183,9 @@ export default function DeltaTable() {
     );
   }
 
-  const rows = events.flatMap((event) => {
+  const activeEvents = events.filter((e) => e.orders.length > 0);
+
+  const rows = activeEvents.flatMap((event) => {
     const date = new Date(event.timestamp).toLocaleString("en-NZ", {
       timeZone: "Pacific/Auckland",
       year:   "numeric",

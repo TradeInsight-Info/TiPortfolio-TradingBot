@@ -486,6 +486,7 @@ def get_delta():
     else:
         events = repo.get_all()
 
+    events = [e for e in events if e.orders]
     return jsonify({
         "count":  len(events),
         "events": [_event_to_public_dict(e) for e in events],
