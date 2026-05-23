@@ -316,6 +316,17 @@ def receive_signal():
             logger.error("Alpaca account fetch failed | hash=%s error=%s", payload_hash, exc)
             return jsonify({"error": f"Failed to fetch account equity from Alpaca: {exc}"}), 502
 
+    # Fix 3: position drift — warn if non-zero symbol set diverges from last successful event
+    if _last_event and _last_event.target_weights:
+        expected_symbols = set(_last_event.target_weights.keys())
+        actual_symbols   = {sym for sym, qty in current_positions.items() if qty > 0}
+        drifted          = expected_symbols.symmetric_difference(actual_symbols)
+        if drifted:
+            logger.warning(
+                "position_drift_detected | expected=%s actual=%s last_event_id=%s",
+                sorted(expected_symbols), sorted(actual_symbols), _last_event.id,
+            )
+
     # 5. Calculate share deltas (same for both modes)
     try:
         deltas = calculate_deltas(
