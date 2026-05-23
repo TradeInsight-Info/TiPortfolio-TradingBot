@@ -301,7 +301,6 @@ def receive_signal():
         except AlpacaError as exc:
             logger.error("Alpaca positions fetch failed | hash=%s error=%s", payload_hash, exc)
             return jsonify({"error": f"Failed to fetch positions from Alpaca: {exc}"}), 502
-
         # 3. Fetch current prices
         try:
             current_prices = alpaca.get_latest_prices(set(target_weights.keys()))
