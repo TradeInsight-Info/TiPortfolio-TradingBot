@@ -241,7 +241,7 @@ def receive_signal():
     _read_repo  = RebalanceRepository(current_app.config["DB_SESSION"])
     _last_event = _read_repo.get_last_successful()
     if _last_event and _last_event.target_weights:
-        prev_symbols = set(_last_event.target_weights.keys())
+        prev_symbols = {s for s, w in _last_event.target_weights.items() if w > 0}
         new_symbols  = set(target_weights.keys())
         if prev_symbols != new_symbols:
             logger.warning(

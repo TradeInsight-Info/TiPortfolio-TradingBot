@@ -8,6 +8,7 @@ place in the app that answers "what do we hold right now."
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify
@@ -18,7 +19,8 @@ logger = logging.getLogger(__name__)
 bp = Blueprint("positions", __name__)
 
 _CACHE_TTL_SECONDS = 3600
-_cache: dict = {}  # keys: "data" (response dict), "fetched_at" (datetime)
+_cache: dict = {}       # keys: "data" (response dict), "fetched_at" (datetime)
+_cache_lock = threading.Lock()
 
 
 @bp.get("/positions")
@@ -54,8 +56,9 @@ def get_positions():
         account   = alpaca.get_account()
     except AlpacaError as exc:
         logger.error("Alpaca positions fetch failed: %s", exc)
-        if _cache:
-            return jsonify({**_cache["data"], "stale": True}), 200
+        with _cache_lock:
+            if _cache:
+                return jsonify({**_cache["data"], "stale": True}), 200
         return jsonify({"error": f"Failed to fetch positions from Alpaca: {exc}"}), 503
 
     data = {
@@ -64,5 +67,6 @@ def get_positions():
         "cash":      account["cash"],
         "as_of":     now.isoformat(),
     }
-    _cache.update({"data": data, "fetched_at": now})
+    with _cache_lock:
+        _cache.update({"data": data, "fetched_at": now})
     return jsonify(data), 200
