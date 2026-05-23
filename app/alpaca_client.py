@@ -151,6 +151,29 @@ class AlpacaClient:
         logger.info("Latest prices resolved: %s", prices)
         return prices
 
+    def list_positions_full(self) -> list[dict]:
+        url = f"{self._base_url}/v2/positions"
+        logger.info("Fetching full positions from Alpaca (%s)", self._mode)
+        raw = self._get(url)
+        return [
+            {
+                "symbol":          p["symbol"],
+                "qty":             float(p["qty"]),
+                "market_value":    float(p["market_value"]),
+                "avg_entry_price": float(p["avg_entry_price"]),
+            }
+            for p in raw
+        ]
+
+    def get_account(self) -> dict:
+        url = f"{self._base_url}/v2/account"
+        logger.info("Fetching account state from Alpaca (%s)", self._mode)
+        body = self._get(url)
+        return {
+            "equity": float(body["equity"]),
+            "cash":   float(body["cash"]),
+        }
+
     def get_account_equity(self) -> float:
         """
         Fetch total account equity from Alpaca.
