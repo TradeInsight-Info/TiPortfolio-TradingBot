@@ -6,9 +6,10 @@ export default function IntroSection() {
         Can an ETF-based portfolio optimisation strategy beat the market?
       </p>
       <p className="text-base text-muted-foreground mb-10 leading-relaxed">
-        This is a live paper-trading bot that runs weekly rebalances driven by
-        the TiPortfolio optimisation library. It holds a basket of ETFs,
-        rebalances when the algorithm signals a change, and records every trade.
+        This is a live paper-trading bot that rebalances based on market
+        volatility signals, driven by the TiPortfolio optimisation library.
+        It holds a basket of ETFs, rebalances when volatility signals a change,
+        and records every trade.
         Results are shown below.
       </p>
       <div className="flex gap-4 justify-center flex-wrap">
