@@ -15,7 +15,7 @@ from app.alpaca_client import AlpacaClient, AlpacaError
 def make_client(mode: str = "paper") -> AlpacaClient:
     return AlpacaClient(api_key="test-key", api_secret="test-secret", mode=mode)
 
-def mock_response(json_data: list, status_code: int = 200) -> MagicMock:
+def mock_response(json_data: list | dict, status_code: int = 200) -> MagicMock:
     """
     Build a fake requests.Response.
     
