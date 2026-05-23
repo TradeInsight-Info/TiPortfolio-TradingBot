@@ -165,8 +165,7 @@ class AlpacaClient:
         url = f"{self._base_url}/v2/positions"
         logger.info("Fetching full positions from Alpaca (%s)", self._mode)
         raw = self._get(url)
-        assert isinstance(raw, list)
-        return [
+        assert isinstance(raw, list)        return [
             {
                 "symbol":          p["symbol"],
                 "qty":             float(p["qty"]),
@@ -189,8 +188,7 @@ class AlpacaClient:
         url = f"{self._base_url}/v2/account"
         logger.info("Fetching account state from Alpaca (%s)", self._mode)
         body = self._get(url)
-        assert isinstance(body, dict)
-        return {
+        assert isinstance(body, dict)        return {
             "equity": float(body["equity"]),
             "cash":   float(body["cash"]),
         }
