@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import BenchmarkChart from "./components/BenchmarkChart";
 import DeltaTable from "./components/DeltaTable";
 import IntroSection from "./components/IntroSection";
-import PerformanceMetrics from "./components/PerformanceMetrics";import PositionSummary from "./components/PositionSummary";
+import PerformanceMetrics from "./components/PerformanceMetrics";
+import PositionSummary from "./components/PositionSummary";
 import { useTheme } from "./hooks/useTheme";
 
 function App() {
@@ -57,7 +58,8 @@ function App() {
         <IntroSection />
       </section>
 
-      <section id="performance" className="max-w-7xl mx-auto px-4 py-16">        <h2 className="text-2xl font-bold mb-2">Performance vs Market</h2>
+      <section id="performance" className="max-w-7xl mx-auto px-4 py-16">
+        <h2 className="text-2xl font-bold mb-2">Performance vs Market</h2>
         <p className="text-muted-foreground mb-6">
           Cumulative return of the bot vs. market benchmarks, indexed from the
           first rebalance date.
