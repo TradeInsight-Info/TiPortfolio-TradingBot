@@ -290,7 +290,7 @@ def get_benchmark():
         first_date = _nearest_trading_day(config_row.recorded_at.date())
     today      = _nearest_trading_day(date.today())
     # end must be at least one day after start so yfinance has a valid range
-    end_date   = today + timedelta(days=1)
+    end_date   = today + timedelta(days=2)
 
     bench_symbols = (
         list(COMPOSITE_COMPONENTS.keys())
