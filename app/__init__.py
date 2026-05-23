@@ -82,6 +82,9 @@ def create_app():
     from app.benchmark import bp as benchmark_bp
     app.register_blueprint(benchmark_bp)
 
+    from app.positions import bp as positions_bp
+    app.register_blueprint(positions_bp)
+
     from app.commands import register_commands
     register_commands(app)
 

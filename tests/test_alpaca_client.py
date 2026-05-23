@@ -174,3 +174,35 @@ class TestAlpacaErrors:
         err = AlpacaError("test", status_code=401)
         assert isinstance(err, Exception)
         assert err.status_code == 401
+
+
+class TestListPositionsFull:
+    def test_returns_list_of_position_dicts(self):
+        resp = mock_response([
+            {"symbol": "QQQ", "qty": "10.0", "market_value": "7175.40",
+             "avg_entry_price": "700.75"},
+            {"symbol": "BIL", "qty": "16.0", "market_value": "1465.44",
+             "avg_entry_price": "91.54"},
+        ])
+        with patch("app.alpaca_client.requests.get", return_value=resp):
+            client = AlpacaClient("key", "secret", "paper")
+            result = client.list_positions_full()
+        assert result == [
+            {"symbol": "QQQ", "qty": 10.0, "market_value": 7175.40, "avg_entry_price": 700.75},
+            {"symbol": "BIL", "qty": 16.0, "market_value": 1465.44, "avg_entry_price": 91.54},
+        ]
+
+    def test_returns_empty_list_when_no_positions(self):
+        resp = mock_response([])
+        with patch("app.alpaca_client.requests.get", return_value=resp):
+            client = AlpacaClient("key", "secret", "paper")
+            assert client.list_positions_full() == []
+
+
+class TestGetAccount:
+    def test_returns_equity_and_cash(self):
+        resp = mock_response({"equity": "10067.79", "cash": "0.00", "buying_power": "20135.58"})
+        with patch("app.alpaca_client.requests.get", return_value=resp):
+            client = AlpacaClient("key", "secret", "paper")
+            result = client.get_account()
+        assert result == {"equity": 10067.79, "cash": 0.0}
