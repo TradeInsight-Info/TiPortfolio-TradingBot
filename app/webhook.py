@@ -265,7 +265,7 @@ def receive_signal():
     # Fix 3: position drift — warn if Alpaca's non-zero symbol set differs from
     # what the last successful rebalance targeted. Out-of-band trades appear here.
     if _last_event and _last_event.target_weights:
-        expected_symbols = set(_last_event.target_weights.keys())
+        expected_symbols = {s for s, w in _last_event.target_weights.items() if w > 0}
         actual_symbols   = {sym for sym, qty in current_positions.items() if qty > 0}
         drifted          = expected_symbols.symmetric_difference(actual_symbols)
         if drifted:
