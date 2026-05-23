@@ -87,7 +87,6 @@ def create_app():
 
     from app.commands import register_commands
     register_commands(app)
-
     allowed_origins = app.config["ALLOWED_ORIGINS"]
     if allowed_origins:
         from flask_cors import CORS
