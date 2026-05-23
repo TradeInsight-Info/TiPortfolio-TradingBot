@@ -316,3 +316,25 @@ class TestPositionDriftLogging:
                         headers={"Authorization": "Bearer test-secret"},
                     )
         assert "position_drift_detected" not in caplog.text
+
+    def test_drift_warning_when_expected_symbol_missing(self, app, caplog, seeded_success_event):
+        """Drift detected when last event targeted GLD but Alpaca no longer holds it."""
+        mock_client = MagicMock()
+        # GLD was sold out-of-band — qty is 0 so it's excluded from actual_symbols
+        mock_client.get_positions.return_value = {"QQQ": 10.0, "BIL": 16.0, "GLD": 0.0}
+        mock_client.get_latest_prices.return_value = {"QQQ": 700.0, "BIL": 91.0, "GLD": 413.0}
+        mock_client.get_account_equity.return_value = 10_000.0
+
+        with patch("app.webhook.AlpacaClient", return_value=mock_client), \
+             patch("app.webhook.OrderExecutor") as mock_exec_cls:
+            mock_exec_cls.return_value.execute.return_value = MagicMock(
+                orders=[], status="success", error_message=None
+            )
+            with app.test_client() as client:
+                with caplog.at_level(logging.WARNING, logger="app.webhook"):
+                    client.post(
+                        "/webhook",
+                        json={"weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                        headers={"Authorization": "Bearer test-secret"},
+                    )
+        assert "position_drift_detected" in caplog.text
