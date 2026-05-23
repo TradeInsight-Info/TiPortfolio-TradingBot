@@ -39,6 +39,9 @@ def create_app():
     from app.benchmark import bp as benchmark_bp
     app.register_blueprint(benchmark_bp)
 
+    from app.positions import bp as positions_bp
+    app.register_blueprint(positions_bp)
+
     allowed_origins = app.config["ALLOWED_ORIGINS"]
     if allowed_origins:
         from flask_cors import CORS
