@@ -214,7 +214,7 @@ def receive_signal():
         502 Bad Gateway - Alpaca API is unreachable.
     """
     secret = current_app.config.get("WEBHOOK_SECRET")
-    if secret and request.headers.get("Authorization") != f"Bearer {secret}":
+    if not secret or request.headers.get("Authorization") != f"Bearer {secret}":
         return jsonify({"error": "Unauthorized"}), 401
 
     received_at = datetime.now(timezone.utc)
