@@ -1,0 +1,33 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-23-position-integrity-fixes.md",
+  "tasks": [
+    {
+      "id": 4,
+      "subject": "Task 1: Symbol-change warning in webhook (Fix 2)",
+      "status": "completed",
+      "description": "**Goal:** Log a WARNING when the incoming webhook's symbol universe differs from the last successful rebalance.\n\n**Files:**\n- Modify: `app/rebalance.py` — add `get_last_successful()`\n- Modify: `app/webhook.py` — add warning after target_weights parsed\n- Modify: `tests/test_rebalance_repository.py`\n- Modify: `tests/test_webhook.py`\n\n**Acceptance Criteria:**\n- [ ] `get_last_successful()` returns latest success or None\n- [ ] WARNING logged when symbols differ\n- [ ] No warning when symbols identical\n- [ ] No warning on fresh DB\n- [ ] Execution never blocked\n\n**Verify:** `pytest tests/test_rebalance_repository.py tests/test_webhook.py -v -k 'last_successful or symbol_universe'`\n\n```json:metadata\n{\"files\": [\"app/rebalance.py\", \"app/webhook.py\", \"tests/test_rebalance_repository.py\", \"tests/test_webhook.py\"], \"verifyCommand\": \"pytest tests/test_rebalance_repository.py tests/test_webhook.py -v -k 'last_successful or symbol_universe'\", \"acceptanceCriteria\": [\"get_last_successful returns latest success or None\", \"symbol_universe_changed WARNING logged when symbols differ\", \"no warning when symbols identical\", \"no warning on fresh DB\", \"execution never blocked\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 2: Live positions backend (Fix 1 backend)",
+      "status": "completed",
+      "blockedBy": [4],
+      "description": "**Goal:** Add `GET /positions` to Flask proxying Alpaca live state with 1-hour cache.\n\n**Files:**\n- Modify: `app/alpaca_client.py`\n- Create: `app/positions.py`\n- Modify: `app/__init__.py`\n- Create: `tests/test_positions.py`\n- Modify: `tests/test_alpaca_client.py`\n\n**Acceptance Criteria:**\n- [ ] GET /positions returns correct shape with HTTP 200\n- [ ] Cached 1 hour\n- [ ] stale:true on Alpaca outage with cache\n- [ ] 503 only with no cache and Alpaca down\n\n**Verify:** `pytest tests/test_positions.py tests/test_alpaca_client.py -v -k 'positions_full or get_account or test_positions'`\n\n```json:metadata\n{\"files\": [\"app/alpaca_client.py\", \"app/positions.py\", \"app/__init__.py\", \"tests/test_positions.py\", \"tests/test_alpaca_client.py\"], \"verifyCommand\": \"pytest tests/test_positions.py tests/test_alpaca_client.py -v -k 'positions_full or get_account or test_positions'\", \"acceptanceCriteria\": [\"GET /positions returns correct shape\", \"1-hour cache\", \"stale:true on outage with cache\", \"503 only with no cache\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 3: Live positions frontend (Fix 1 frontend)",
+      "status": "completed",
+      "blockedBy": [5],
+      "description": "**Goal:** Add usePositions hook + PositionSummary component; integrate in Trades section.\n\n**Files:**\n- Create: `frontend/src/hooks/usePositions.js`\n- Create: `frontend/src/components/PositionSummary.jsx`\n- Modify: `frontend/src/App.jsx`\n\n**Acceptance Criteria:**\n- [ ] usePositions fetches /positions\n- [ ] PositionSummary renders symbol/qty/market_value/pct\n- [ ] stale indicator on stale:true\n- [ ] error state on 503\n\n**Verify:** Load http://localhost:5173 → Trades section shows live Holdings card.\n\n```json:metadata\n{\"files\": [\"frontend/src/hooks/usePositions.js\", \"frontend/src/components/PositionSummary.jsx\", \"frontend/src/App.jsx\"], \"verifyCommand\": \"cd frontend && npm run dev\", \"acceptanceCriteria\": [\"usePositions fetches /positions\", \"PositionSummary renders correctly\", \"stale indicator shown\", \"error state on 503\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 4: Position drift logging at webhook (Fix 3)",
+      "status": "completed",
+      "blockedBy": [4],
+      "description": "**Goal:** Log WARNING when live Alpaca symbol set diverges from last successful DB event's target_weights.\n\n**Files:**\n- Modify: `app/webhook.py`\n- Modify: `tests/test_webhook.py`\n\n**Acceptance Criteria:**\n- [ ] position_drift_detected WARNING logged on symbol mismatch\n- [ ] No warning in normal operation\n- [ ] No warning on fresh DB\n- [ ] Single get_last_successful() call per webhook (shared with Task 1)\n\n**Verify:** `pytest tests/test_webhook.py -v -k 'drift'`\n\n```json:metadata\n{\"files\": [\"app/webhook.py\", \"tests/test_webhook.py\"], \"verifyCommand\": \"pytest tests/test_webhook.py -v -k 'drift'\", \"acceptanceCriteria\": [\"position_drift_detected WARNING logged on mismatch\", \"no warning in normal operation\", \"no warning on fresh DB\", \"single DB call per request\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-23T09:30:00Z"
+}
