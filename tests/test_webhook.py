@@ -246,3 +246,73 @@ class TestSymbolUniverseWarning:
                 )
         assert resp.status_code == 202
         assert "symbol_universe_changed" not in caplog.text
+
+
+class TestPositionDriftLogging:
+    def test_no_drift_warning_in_normal_operation(self, app, caplog, seeded_success_event):
+        """No drift when Alpaca positions match the last event's target symbols."""
+        # seeded_success_event targets QQQ/BIL/GLD
+        # mock Alpaca to return exactly those same symbols with non-zero qty
+        mock_client = MagicMock()
+        mock_client.get_positions.return_value = {"QQQ": 10.0, "BIL": 16.0, "GLD": 2.0}
+        mock_client.get_latest_prices.return_value = {"QQQ": 700.0, "BIL": 91.0, "GLD": 413.0}
+        mock_client.get_account_equity.return_value = 10_000.0
+
+        with patch("app.webhook.AlpacaClient", return_value=mock_client), \
+             patch("app.webhook.OrderExecutor") as mock_exec_cls:
+            mock_exec_cls.return_value.execute.return_value = MagicMock(
+                orders=[], status="no_change", error_message=None
+            )
+            with app.test_client() as client:
+                with caplog.at_level(logging.WARNING, logger="app.webhook"):
+                    client.post(
+                        "/webhook",
+                        json={"weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                        headers={"Authorization": "Bearer test-secret"},
+                    )
+        assert "position_drift_detected" not in caplog.text
+
+    def test_drift_warning_when_unexpected_symbol_held(self, app, caplog, seeded_success_event):
+        """Drift detected when Alpaca holds SPY but last event targeted QQQ/BIL/GLD."""
+        mock_client = MagicMock()
+        # Alpaca has SPY (unexpected) alongside the expected symbols
+        mock_client.get_positions.return_value = {"QQQ": 10.0, "BIL": 16.0, "GLD": 2.0, "SPY": 8.0}
+        mock_client.get_latest_prices.return_value = {
+            "QQQ": 700.0, "BIL": 91.0, "GLD": 413.0, "SPY": 738.0
+        }
+        mock_client.get_account_equity.return_value = 10_000.0
+
+        with patch("app.webhook.AlpacaClient", return_value=mock_client), \
+             patch("app.webhook.OrderExecutor") as mock_exec_cls:
+            mock_exec_cls.return_value.execute.return_value = MagicMock(
+                orders=[], status="success", error_message=None
+            )
+            with app.test_client() as client:
+                with caplog.at_level(logging.WARNING, logger="app.webhook"):
+                    client.post(
+                        "/webhook",
+                        json={"weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                        headers={"Authorization": "Bearer test-secret"},
+                    )
+        assert "position_drift_detected" in caplog.text
+
+    def test_no_drift_warning_on_fresh_db(self, app, caplog):
+        """No drift warning when there are no prior successful events."""
+        mock_client = MagicMock()
+        mock_client.get_positions.return_value = {"QQQ": 10.0}
+        mock_client.get_latest_prices.return_value = {"QQQ": 700.0}
+        mock_client.get_account_equity.return_value = 10_000.0
+
+        with patch("app.webhook.AlpacaClient", return_value=mock_client), \
+             patch("app.webhook.OrderExecutor") as mock_exec_cls:
+            mock_exec_cls.return_value.execute.return_value = MagicMock(
+                orders=[], status="success", error_message=None
+            )
+            with app.test_client() as client:
+                with caplog.at_level(logging.WARNING, logger="app.webhook"):
+                    client.post(
+                        "/webhook",
+                        json={"weights": {"QQQ": 1.0}},
+                        headers={"Authorization": "Bearer test-secret"},
+                    )
+        assert "position_drift_detected" not in caplog.text
