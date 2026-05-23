@@ -194,7 +194,7 @@ class TestDateRangeQuery:
     def test_empty_range_returns_empty_list(self, repo):
         """
         Test that an empty range returns an empty list.
-        
+
         e.g.
         - Query for data in the future
         - Confirm that the result will return an empty list not crush
@@ -205,3 +205,32 @@ class TestDateRangeQuery:
             end=far_future + timedelta(days=1),
         )
         assert results == []
+
+
+class TestGetLastSuccessful:
+    def test_returns_none_when_no_events(self, repo):
+        assert repo.get_last_successful() is None
+
+    def test_returns_none_when_only_failed_events(self, repo, sample_weights, sample_orders):
+        repo.save(target_weights=sample_weights, orders=sample_orders, status="failed")
+        assert repo.get_last_successful() is None
+
+    def test_returns_most_recent_success(self, repo, sample_weights, sample_orders):
+        from datetime import datetime, timezone, timedelta
+        repo.save(
+            target_weights=sample_weights, orders=sample_orders, status="success",
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        newer = repo.save(
+            target_weights={"SPY": 1.0}, orders=[], status="success",
+        )
+        result = repo.get_last_successful()
+        assert result.id == newer.id
+
+    def test_ignores_no_change_events(self, repo, sample_weights, sample_orders):
+        success = repo.save(
+            target_weights=sample_weights, orders=sample_orders, status="success",
+        )
+        repo.save(target_weights=sample_weights, orders=[], status="no_change")
+        result = repo.get_last_successful()
+        assert result.id == success.id

@@ -187,6 +187,21 @@ class RebalanceRepository:
             session.expunge_all()
         return events
 
+    def get_last_successful(self) -> RebalanceEvent | None:
+        """
+        Return the most recent event with status="success", or None if none exists.
+        """
+        with self._tx() as session:
+            event = (
+                session.query(RebalanceEvent)
+                .filter(RebalanceEvent.status == "success")
+                .order_by(RebalanceEvent.timestamp.desc())
+                .first()
+            )
+            if event is not None:
+                session.expunge(event)
+        return event
+
     # Read - existing method kept for date-range queries
     def query_by_date_range(
         self,

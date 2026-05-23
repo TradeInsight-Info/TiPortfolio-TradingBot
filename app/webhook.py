@@ -237,6 +237,18 @@ def receive_signal():
 
     # 2. Fetch current positions from Alpaca
     target_weights: dict[str, float] = body["weights"]
+
+    _read_repo  = RebalanceRepository(current_app.config["DB_SESSION"])
+    _last_event = _read_repo.get_last_successful()
+    if _last_event and _last_event.target_weights:
+        prev_symbols = set(_last_event.target_weights.keys())
+        new_symbols  = set(target_weights.keys())
+        if prev_symbols != new_symbols:
+            logger.warning(
+                "symbol_universe_changed | prev=%s new=%s last_event_id=%s",
+                sorted(prev_symbols), sorted(new_symbols), _last_event.id,
+            )
+
     try:
         alpaca = AlpacaClient(
             api_key=current_app.config["ALPACA_API_KEY"],
