@@ -8,7 +8,8 @@ place in the app that answers "what do we hold right now."
 from __future__ import annotations
 
 import logging
-import threadingfrom datetime import datetime, timezone
+import threading
+from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify
 
@@ -20,6 +21,7 @@ bp = Blueprint("positions", __name__)
 _CACHE_TTL_SECONDS = 3600
 _cache: dict = {}       # keys: "data" (response dict), "fetched_at" (datetime)
 _cache_lock = threading.Lock()
+
 
 @bp.get("/positions")
 def get_positions():
@@ -38,7 +40,8 @@ def get_positions():
             "cash":      float,
             "as_of":     ISO 8601 timestamp of last successful fetch
         }
-    """    now = datetime.now(timezone.utc)
+    """
+    now = datetime.now(timezone.utc)
 
     if _cache and (now - _cache["fetched_at"]).total_seconds() < _CACHE_TTL_SECONDS:
         return jsonify(_cache["data"]), 200
@@ -55,7 +58,8 @@ def get_positions():
         logger.error("Alpaca positions fetch failed: %s", exc)
         with _cache_lock:
             if _cache:
-                return jsonify({**_cache["data"], "stale": True}), 200        return jsonify({"error": f"Failed to fetch positions from Alpaca: {exc}"}), 503
+                return jsonify({**_cache["data"], "stale": True}), 200
+        return jsonify({"error": f"Failed to fetch positions from Alpaca: {exc}"}), 503
 
     data = {
         "positions": positions,
@@ -64,4 +68,5 @@ def get_positions():
         "as_of":     now.isoformat(),
     }
     with _cache_lock:
-        _cache.update({"data": data, "fetched_at": now})    return jsonify(data), 200
+        _cache.update({"data": data, "fetched_at": now})
+    return jsonify(data), 200
