@@ -128,10 +128,10 @@ class TestWebhookAuth:
         )
         assert resp.status_code == 202
 
-    def test_no_auth_check_when_secret_not_set(self, client_no_auth, mock_alpaca):
-        """When WEBHOOK_SECRET is absent, any request is accepted."""
+    def test_returns_401_when_secret_not_configured(self, client_no_auth):
+        """When WEBHOOK_SECRET is absent, all webhook requests are rejected (fail-closed)."""
         resp = client_no_auth.post("/webhook", json=VALID_WEIGHTS)
-        assert resp.status_code == 202
+        assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------

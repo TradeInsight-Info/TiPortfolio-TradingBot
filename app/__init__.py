@@ -9,7 +9,7 @@ from app import models, portfolio_config  # noqa: F401
 
 load_dotenv()
 
-REQUIRED_VARS = ["ALPACA_API_KEY", "ALPACA_API_SECRET", "ALPACA_MODE"]
+REQUIRED_VARS = ["ALPACA_API_KEY", "ALPACA_API_SECRET", "ALPACA_MODE", "WEBHOOK_SECRET"]
 
 def _setup_logging() -> None:
     log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
