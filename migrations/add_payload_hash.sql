@@ -13,3 +13,7 @@ ALTER TABLE rebalance_events
 CREATE UNIQUE INDEX IF NOT EXISTS uq_rebalance_events_payload_hash
     ON rebalance_events (payload_hash)
     WHERE payload_hash IS NOT NULL;
+
+-- To roll back:
+--   DROP INDEX IF EXISTS uq_rebalance_events_payload_hash;
+--   ALTER TABLE rebalance_events DROP COLUMN IF EXISTS payload_hash;

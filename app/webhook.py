@@ -416,6 +416,7 @@ def receive_signal():
         # Live: write pending row before submitting orders so a crash is auditable
         assert alpaca is not None  # guaranteed when not is_simulated
         repo = RebalanceRepository(current_app.config["DB_SESSION"])
+        event_id: int | None = None
         event_id, created = repo.save_pending(
             target_weights=target_weights,
             payload_hash=payload_hash,
