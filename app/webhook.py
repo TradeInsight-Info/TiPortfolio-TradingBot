@@ -242,7 +242,17 @@ def receive_signal():
 
     target_weights: dict[str, float] = body["weights"]
 
-    _read_repo  = RebalanceRepository(current_app.config["DB_SESSION"])
+    _read_repo = RebalanceRepository(current_app.config["DB_SESSION"])
+    # Idempotency: if we've already processed this exact payload, return the existing record
+    _existing = _read_repo.find_by_hash(payload_hash)
+    if _existing and _existing.status != "pending":
+        logger.info("Duplicate webhook | hash=%s returning existing event_id=%s", payload_hash, _existing.id)
+        return jsonify({
+            "status":          _existing.status,
+            "received_at":     received_at.isoformat(),
+            "payload_hash":    payload_hash,
+            "rebalance_event": _event_to_dict(_existing),
+        }), 202
     _last_event = _read_repo.get_last_successful()
     if _last_event and _last_event.target_weights:
         prev_symbols = {s for s, w in _last_event.target_weights.items() if w > 0}
@@ -403,15 +413,37 @@ def receive_signal():
         ]
         execution_result = ExecutionResult(orders=order_results, status="success")
     else:
-        # Live: submit to Alpaca and poll for fills
+        # Live: write pending row before submitting orders so a crash is auditable
         assert alpaca is not None  # guaranteed when not is_simulated
+        repo = RebalanceRepository(current_app.config["DB_SESSION"])
+        event_id: int | None = None
+        event_id, created = repo.save_pending(
+            target_weights=target_weights,
+            payload_hash=payload_hash,
+            timestamp=received_at,
+        )
+        if not created:
+            # Race: another request already claimed this hash
+            _existing = repo.find_by_hash(payload_hash)
+            logger.info("Duplicate in-flight webhook | hash=%s event_id=%s", payload_hash, event_id)
+            return jsonify({
+                "status":          _existing.status if _existing else "pending",
+                "received_at":     received_at.isoformat(),
+                "payload_hash":    payload_hash,
+            }), 202
+
         executor = OrderExecutor(
             api_key=current_app.config["ALPACA_API_KEY"],
             api_secret=current_app.config["ALPACA_API_SECRET"],
             base_url=alpaca._base_url,
             alpaca_client=alpaca,
         )
-        execution_result = executor.execute(deltas, signal_hash=payload_hash)
+        try:
+            execution_result = executor.execute(deltas, signal_hash=payload_hash)
+        except Exception as exc:
+            logger.error("Order execution failed | hash=%s event_id=%s error=%s", payload_hash, event_id, exc)
+            repo.finalise(event_id, orders=[], status="failed", error_message=str(exc))
+            return jsonify({"error": f"Order execution failed: {exc}"}), 502
 
     # 7. Persist the full rebalance record to DB
     db_orders = _serialize_orders_for_db(deltas, execution_result.orders, portfolio_value)
@@ -421,14 +453,23 @@ def receive_signal():
         event_ts = received_at
 
     try:
-        repo = RebalanceRepository(current_app.config["DB_SESSION"])
-        saved_event = repo.save(
-            target_weights=target_weights,
-            orders=db_orders,
-            status=execution_result.status,
-            error_message=execution_result.error_message,
-            timestamp=event_ts,
-        )
+        if is_simulated:
+            repo = RebalanceRepository(current_app.config["DB_SESSION"])
+            saved_event = repo.save(
+                target_weights=target_weights,
+                orders=db_orders,
+                status=execution_result.status,
+                error_message=execution_result.error_message,
+                timestamp=event_ts,
+            )
+        else:
+            repo.finalise(
+                event_id,
+                orders=db_orders,
+                status=execution_result.status,
+                error_message=execution_result.error_message,
+            )
+            saved_event = repo.get_by_id(event_id)
     except SQLAlchemyError as exc:
         logger.error("DB write failed | hash=%s error=%s", payload_hash, exc)
         return jsonify({"error": "Failed to persist rebalance record."}), 500

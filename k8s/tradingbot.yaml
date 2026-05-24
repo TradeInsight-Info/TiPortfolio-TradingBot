@@ -15,6 +15,12 @@ metadata:
     tier: backend
 spec:
   replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: tiportfolio-tradingbot
@@ -184,3 +190,17 @@ spec:
                     secretKeyRef:
                       name: default-secrets
                       key: tiportfolio-webhook-secret
+---
+# Ensures at least one tradingbot pod stays available during voluntary disruptions
+# (node drains, rolling updates). With a single replica this only guards voluntary
+# disruptions — not crashes — but prevents accidental zero-replica windows.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tiportfolio-tradingbot-pdb
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: tiportfolio-tradingbot
+      tier: backend
