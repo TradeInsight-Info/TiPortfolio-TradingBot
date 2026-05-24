@@ -70,7 +70,7 @@ jobs:
         working-directory: frontend
         env:
           VITE_API_BASE_URL: https://ti-bot-api.tradeinsight.info
-        run: pnpm run build
+        run: pnpm run build:ssg
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
