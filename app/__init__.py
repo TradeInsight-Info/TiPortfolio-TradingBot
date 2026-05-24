@@ -4,8 +4,13 @@ import os
 
 from flask import Flask
 from dotenv import load_dotenv
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from app.database import init_db
 from app import models, portfolio_config  # noqa: F401
+
+# Module-level so blueprints can import and decorate with @limiter.limit(...)
+limiter = Limiter(key_func=get_remote_address, storage_uri="memory://", default_limits=[])
 
 load_dotenv()
 
@@ -71,6 +76,7 @@ def create_app():
         from sentry_sdk.integrations.flask import FlaskIntegration
         sentry_sdk.init(dsn=sentry_dsn, integrations=[FlaskIntegration()], traces_sample_rate=0.1)
 
+    limiter.init_app(app)
     init_db(app)
 
     from app.routes import bp
