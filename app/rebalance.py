@@ -14,12 +14,13 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Generator
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import RebalanceEvent
 
 # add 'no_change' for portfolio already matches target
-VALID_STATUSES = {"success", "failed", "partial", "no_change"}
+VALID_STATUSES = {"success", "failed", "partial", "no_change", "pending"}
 
 
 class RebalanceRepository:
@@ -88,6 +89,76 @@ class RebalanceRepository:
             session.flush()         # materialise id before commit
             session.expunge(event)  # detach so the object lives after close()
 
+        return event
+
+
+    def save_pending(
+        self,
+        *,
+        target_weights: dict[str, float],
+        payload_hash: str,
+        timestamp: datetime | None = None,
+    ) -> tuple[int, bool]:
+        """
+        Write a "pending" row before order submission.
+
+        Returns (event_id, created). If a non-pending row with the same hash
+        already exists (duplicate call), created=False and event_id belongs to
+        the existing row. Callers should short-circuit when created=False.
+        """
+        if not payload_hash:
+            raise ValueError("payload_hash must be non-empty")
+
+        event = RebalanceEvent(
+            timestamp=timestamp or datetime.now(timezone.utc),
+            target_weights=target_weights,
+            orders=[],
+            status="pending",
+            payload_hash=payload_hash,
+        )
+        try:
+            with self._tx() as session:
+                session.add(event)
+                session.flush()
+                session.expunge(event)
+            return event.id, True
+        except IntegrityError:
+            # A row with this hash already exists — return it.
+            existing = self.find_by_hash(payload_hash)
+            if existing is None:
+                raise  # unexpected: integrity error but row not found
+            return existing.id, False
+
+    def finalise(
+        self,
+        event_id: int,
+        *,
+        orders: list[dict],
+        status: str,
+        error_message: str | None = None,
+    ) -> None:
+        """Update a pending event with execution results."""
+        if status not in VALID_STATUSES:
+            raise ValueError(f"Invalid status {status!r}.")
+        with self._tx() as session:
+            event = session.get(RebalanceEvent, event_id)
+            if event is None:
+                raise ValueError(f"RebalanceEvent id={event_id} not found.")
+            event.orders = list(orders)
+            event.status = status
+            event.error_message = error_message
+            session.flush()
+
+    def find_by_hash(self, payload_hash: str) -> RebalanceEvent | None:
+        """Return the event matching this hash, or None."""
+        with self._tx() as session:
+            event = (
+                session.query(RebalanceEvent)
+                .filter(RebalanceEvent.payload_hash == payload_hash)
+                .first()
+            )
+            if event is not None:
+                session.expunge(event)
         return event
 
     def update_orders(

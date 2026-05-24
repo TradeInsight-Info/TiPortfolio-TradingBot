@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime, Index, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Index, Text, JSON, text
 from app.database import Base
 
 class RebalanceEvent(Base):
@@ -25,10 +25,17 @@ class RebalanceEvent(Base):
     #   }
     orders          = Column(JSON, nullable=False)
 
-    status          = Column(String(10), nullable=False)  # "success" / "failed" / "partial" / "no_change"
+    status          = Column(String(10), nullable=False)  # "success" / "failed" / "partial" / "no_change" / "pending"
     error_message   = Column(Text, nullable=True)
+    payload_hash    = Column(String(64), nullable=True)   # SHA-256 of canonical weights JSON; NULL for legacy rows
 
-    # Index for date range queries
+    # Index for date range queries; partial unique index prevents duplicate executions
     __table_args__ = (
         Index("ix_rebalance_events_timestamp", "timestamp"),
+        Index(
+            "uq_rebalance_events_payload_hash",
+            "payload_hash",
+            unique=True,
+            postgresql_where=text("payload_hash IS NOT NULL"),
+        ),
     )
