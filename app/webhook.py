@@ -30,6 +30,7 @@ from decimal import Decimal
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy.exc import SQLAlchemyError
 
+from app import limiter
 from app.alpaca_client import AlpacaClient, AlpacaError
 from app.calculator import calculate_deltas
 from app.order_executor import ExecutionResult, OrderExecutor, OrderResult
@@ -534,6 +535,7 @@ def get_delta():
     }), 200
 
 @bp.route("/delta/<int:event_id>/refresh", methods=["POST"])
+@limiter.limit("10 per minute")
 def refresh_fill_status(event_id: int):
     """
     Re-poll Alpaca for the fill status of any pending orders in a rebalance event.
