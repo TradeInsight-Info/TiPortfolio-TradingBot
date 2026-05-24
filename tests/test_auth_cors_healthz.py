@@ -50,8 +50,8 @@ def mock_alpaca():
         from app.order_executor import ExecutionResult, OrderResult
         executor.execute.return_value = ExecutionResult(
             status="success",
-            orders=[OrderResult(symbol="SPY", success=True, alpaca_order_id="id-1", delta=6),
-                    OrderResult(symbol="QQQ", success=True, alpaca_order_id="id-2", delta=4)],
+            orders=[OrderResult(symbol="SPY", side="buy", qty=6, success=True, alpaca_order_id="id-1"),
+                    OrderResult(symbol="QQQ", side="buy", qty=4, success=True, alpaca_order_id="id-2")],
             error_message=None,
         )
         mock_exec_cls.return_value = executor
