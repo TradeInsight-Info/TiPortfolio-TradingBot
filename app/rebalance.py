@@ -144,6 +144,10 @@ class RebalanceRepository:
             event = session.get(RebalanceEvent, event_id)
             if event is None:
                 raise ValueError(f"RebalanceEvent id={event_id} not found.")
+            if event.status != "pending":
+                raise ValueError(
+                    f"RebalanceEvent id={event_id} already finalised (status={event.status!r}).",
+                )
             event.orders = list(orders)
             event.status = status
             event.error_message = error_message
