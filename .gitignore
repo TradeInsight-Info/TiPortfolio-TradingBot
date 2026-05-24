@@ -18,5 +18,7 @@ src/tiportfolio.egg-info/
 htmlcov/
 .ruff_cache/
 k8s/default-secrets.yaml
+k8s/*-secrets.yaml
+k8s/*-secret.yaml
 .claude/
 .wrangler/
