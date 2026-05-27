@@ -1,6 +1,9 @@
 // Prefix to avoid collisions with other localStorage keys
 const KEY_PREFIX = 'tradeinsight_';
 
+// Default TTL for cached data (24 hours)
+const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Build the localStorage key for a given view and optional ticker.
  * Examples:
@@ -12,14 +15,26 @@ export function cacheKey(view, ticker = '') {
 }
 
 /**
- * Read and parse a JSON value from localStorage.
- * Returns null if the key does not exist or the stored value cannot be parsed.
+ * Read and parse a value from localStorage.
+ * Returns null if the key does not exist, cannot be parsed, or has expired.
+ * Expired entries are removed automatically.
  * Never throws - quota or parse errors are swallowed silently.
  */
-export function readCache(key) {
+export function readCache(key, ttlMs = DEFAULT_TTL_MS) {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Entries without cachedAt are from the old format — treat as expired
+    if (!parsed?.cachedAt) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    if (Date.now() - parsed.cachedAt > ttlMs) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return parsed.data;
   } catch {
     // Silently ignore JSON parse errors or SecurityError in sandboxed iframes
     return null;
@@ -28,12 +43,13 @@ export function readCache(key) {
 
 /**
  * Serialise value to JSON and write it to localStorage under key.
+ * Wraps the value in a {cachedAt, data} envelope for TTL tracking.
  * Silently falls back to no-op when the quota is exceeded or storage is
  * unavailable (e.g. private browsing in some browsers).
  */
 export function writeCache(key, value) {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(key, JSON.stringify({ cachedAt: Date.now(), data: value }));
   } catch {
     // QuotaExceededError or SecurityError - app continues without caching
   }
