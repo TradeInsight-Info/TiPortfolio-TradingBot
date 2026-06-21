@@ -28,6 +28,7 @@ class RebalanceEvent(Base):
     status          = Column(String(10), nullable=False)  # "success" / "failed" / "partial" / "no_change" / "pending"
     error_message   = Column(Text, nullable=True)
     payload_hash    = Column(String(64), nullable=True)   # SHA-256 of canonical weights JSON; NULL for legacy rows
+    strategy_id     = Column(String(32), nullable=False, server_default="vix", index=True)
 
     # Index for date range queries; partial unique index prevents duplicate executions
     __table_args__ = (
