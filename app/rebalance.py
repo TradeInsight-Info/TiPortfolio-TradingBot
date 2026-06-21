@@ -224,7 +224,7 @@ class RebalanceRepository:
         return event
 
     # Read - used by GET /delta to return records immediately after webhook
-    def get_all(self) -> list[RebalanceEvent]:
+    def get_all(self, strategy_id: str | None = None) -> list[RebalanceEvent]:
         """
         Return all rebalance events ordered by timestamp descending (newest first).
 
@@ -232,37 +232,41 @@ class RebalanceRepository:
         returning its 202 response, the new record is always visible here
         immediately after the webhook call completes.
 
+        Args:
+            strategy_id: When provided, only events for that strategy are returned.
+
         Returns:
             List of detached RebalanceEvent objects, newest first.
         """
         with self._tx() as session:
-            events = (
-                session.query(RebalanceEvent)
-                .order_by(RebalanceEvent.timestamp.desc())
-                .all()
-            )
+            q = session.query(RebalanceEvent)
+            if strategy_id is not None:
+                q = q.filter(RebalanceEvent.strategy_id == strategy_id)
+            events = q.order_by(RebalanceEvent.timestamp.desc()).all()
             session.expunge_all()   # detach before session closes
         return events
 
     # Read - used by GET /delta?since=<ISO timestamp>
-    def get_since(self, since: datetime) -> list[RebalanceEvent]:
+    def get_since(self, since: datetime, strategy_id: str | None = None) -> list[RebalanceEvent]:
         """
         Return events strictly newer than `since`, ordered by timestamp descending.
 
         Args:
-            since: Timezone-aware datetime; only records with timestamp > since
-                   are included.
+            since:       Timezone-aware datetime; only records with timestamp > since
+                         are included.
+            strategy_id: When provided, only events for that strategy are returned.
 
         Returns:
             List of detached RebalanceEvent objects, newest first.
         """
         with self._tx() as session:
-            events = (
+            q = (
                 session.query(RebalanceEvent)
                 .filter(RebalanceEvent.timestamp > since)
-                .order_by(RebalanceEvent.timestamp.desc())
-                .all()
             )
+            if strategy_id is not None:
+                q = q.filter(RebalanceEvent.strategy_id == strategy_id)
+            events = q.order_by(RebalanceEvent.timestamp.desc()).all()
             session.expunge_all()
         return events
 

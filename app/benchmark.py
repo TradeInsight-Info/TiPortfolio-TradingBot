@@ -19,6 +19,7 @@ Caching:
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date, timedelta
 
 import pandas as pd
@@ -26,6 +27,7 @@ import yfinance as yf
 from flask import Blueprint, current_app, jsonify, request
 
 from app.alpaca_client import AlpacaClient, AlpacaError
+from app import strategies_registry as reg
 from app.portfolio_config import PortfolioConfigRepository
 from app.rebalance import RebalanceRepository
 
@@ -221,18 +223,32 @@ def _portfolio_value_curve(events: list, prices: pd.DataFrame) -> pd.Series:
     return pd.Series(values, index=prices_from_start.index).dropna()
 
 
-def _alpaca_equity_curve(first_date: date) -> pd.Series:
+def _alpaca_equity_curve(
+    first_date: date,
+    api_key: str | None = None,
+    api_secret: str | None = None,
+    strategy_id: str | None = None,
+) -> pd.Series:
     """
     Fetch Alpaca portfolio history and return a Series normalised to 1.0
     at the first data point. Used when no rebalance events exist.
     Returns an empty Series if the fetch fails or returns no data.
+
+    Args:
+        first_date:  Start date for portfolio history.
+        api_key:     Alpaca API key; defaults to ALPACA_API_KEY config value.
+        api_secret:  Alpaca API secret; defaults to ALPACA_API_SECRET config value.
+        strategy_id: Included in the cache key so per-strategy accounts are
+                     cached independently.
     """
-    cache_key = (date.today(), first_date)
+    cache_key = (date.today(), first_date, strategy_id)
     if cache_key not in _portfolio_hist_cache:
         try:
+            key = api_key if api_key is not None else current_app.config["ALPACA_API_KEY"]
+            secret = api_secret if api_secret is not None else current_app.config["ALPACA_API_SECRET"]
             client = AlpacaClient(
-                api_key=current_app.config["ALPACA_API_KEY"],
-                api_secret=current_app.config["ALPACA_API_SECRET"],
+                api_key=key,
+                api_secret=secret,
                 mode=current_app.config["ALPACA_MODE"],
             )
             _portfolio_hist_cache[cache_key] = client.get_portfolio_history(first_date)
@@ -256,17 +272,35 @@ def get_benchmark():
     Return bot equity curve and benchmark cumulative return.
 
     Query params:
-        ticker (required): SPY | QQQ | QQQ+GLD+BIL
+        ticker      (optional): SPY | QQQ | QQQ+GLD+BIL.
+                                When omitted, falls back to the strategy's
+                                default benchmark (requires strategy_id).
+                                Required when strategy_id is absent.
+        strategy_id (optional): Filter events and Alpaca history to this
+                                strategy's own account. Unknown id → 400.
 
     Responses:
         200 { no_data: true }
         200 { no_data: false, ticker, first_rebalance_date, bot: [...], benchmark: [...] }
-        400 { error: "..." }   unsupported ticker
+        400 { error: "..." }   unsupported/missing ticker, unknown strategy_id
         502 { error: "..." }   yfinance fetch failed
     """
+    # Validate optional strategy_id
+    strategy_id = request.args.get("strategy_id")
+    strategy: dict | None = None
+    if strategy_id is not None:
+        try:
+            strategy = reg.get_strategy(strategy_id)
+        except KeyError:
+            return jsonify({"error": f"Unknown strategy_id: {strategy_id!r}."}), 400
+
     # URL query strings encode '+' as space (application/x-www-form-urlencoded)
     # or '%2B'. Normalise both to '+'.
     raw_ticker = request.args.get("ticker", "").upper().replace(" ", "+")
+
+    # Fall back to strategy's default benchmark when ticker is absent
+    if not raw_ticker and strategy is not None:
+        raw_ticker = strategy["benchmark"].upper()
 
     if raw_ticker not in SUPPORTED_TICKERS:
         return jsonify({
@@ -277,7 +311,7 @@ def get_benchmark():
         }), 400
 
     repo = RebalanceRepository(current_app.config["DB_SESSION"])
-    events = repo.get_all()  # newest-first
+    events = repo.get_all(strategy_id)  # newest-first, scoped to strategy if given
     events_asc = sorted(events, key=lambda e: e.timestamp)
 
     if events_asc:
@@ -307,7 +341,18 @@ def get_benchmark():
     if prices.empty:
         return jsonify({"no_data": True}), 200
 
-    bot   = _alpaca_equity_curve(first_date)
+    # Build per-strategy Alpaca creds when a strategy is specified
+    strat_key = strat_secret = None
+    if strategy is not None:
+        strat_key    = os.getenv(strategy["alpaca_key_env"], "")
+        strat_secret = os.getenv(strategy["alpaca_secret_env"], "")
+
+    bot = _alpaca_equity_curve(
+        first_date,
+        api_key=strat_key,
+        api_secret=strat_secret,
+        strategy_id=strategy_id,
+    )
 
     # Align benchmark normalisation to bot's first actual data date so all
     # series start from the same point on the chart.

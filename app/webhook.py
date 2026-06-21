@@ -517,6 +517,17 @@ def receive_signal():
         "rebalance_event": _event_to_dict(saved_event),   # full record in response
     }), 202
 
+@bp.route("/strategies", methods=["GET"])
+def list_strategies():
+    """
+    Return all registered trading strategies.
+
+    Responses:
+        200 OK - JSON array of {id, name} objects.
+    """
+    return jsonify(reg.list_strategies()), 200
+
+
 @bp.route("/delta", methods=["GET"])
 def get_delta():
     """
@@ -526,15 +537,25 @@ def get_delta():
     immediately after the webhook call completes.
 
     Query params:
-        since (optional): ISO 8601 timestamp. When provided, only records
-                          with timestamp after this value are returned.
-                          e.g.: GET /delta?since=2026-04-01T00:00:00Z
+        since       (optional): ISO 8601 timestamp. When provided, only records
+                                with timestamp after this value are returned.
+                                e.g.: GET /delta?since=2026-04-01T00:00:00Z
+        strategy_id (optional): Filter results to a single strategy.
+                                Unknown strategy_id → 400.
 
     Responses:
         200 OK - JSON array of rebalance event objects.
-        400    - 'since' param is present but not a valid ISO 8601 timestamp.
+        400    - 'since' param is invalid ISO 8601, or strategy_id is unknown.
     """
     repo = RebalanceRepository(current_app.config["DB_SESSION"])
+
+    # Validate optional strategy_id filter
+    strategy_id = request.args.get("strategy_id")
+    if strategy_id is not None:
+        try:
+            reg.get_strategy(strategy_id)
+        except KeyError:
+            return jsonify({"error": f"Unknown strategy_id: {strategy_id!r}."}), 400
 
     since_param = request.args.get("since")
     if since_param is not None:
@@ -553,9 +574,9 @@ def get_delta():
         if since_dt.tzinfo is None:
             since_dt = since_dt.replace(tzinfo=timezone.utc)
 
-        events = repo.get_since(since_dt)
+        events = repo.get_since(since_dt, strategy_id)
     else:
-        events = repo.get_all()
+        events = repo.get_all(strategy_id)
 
     events = [e for e in events if e.orders]
     return jsonify({
