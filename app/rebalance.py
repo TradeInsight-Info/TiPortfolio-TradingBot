@@ -52,6 +52,7 @@ class RebalanceRepository:
         status: str,
         error_message: str | None = None,
         timestamp: datetime | None = None,
+        strategy_id: str = "vix",
     ) -> RebalanceEvent:
         """
         Persist one rebalance event atomically.
@@ -82,6 +83,7 @@ class RebalanceRepository:
             orders=orders,
             status=status,
             error_message=error_message,
+            strategy_id=strategy_id,
         )
 
         with self._tx() as session:
@@ -98,6 +100,7 @@ class RebalanceRepository:
         target_weights: dict[str, float],
         payload_hash: str,
         timestamp: datetime | None = None,
+        strategy_id: str = "vix",
     ) -> tuple[int, bool]:
         """
         Write a "pending" row before order submission.
@@ -115,6 +118,7 @@ class RebalanceRepository:
             orders=[],
             status="pending",
             payload_hash=payload_hash,
+            strategy_id=strategy_id,
         )
         try:
             with self._tx() as session:

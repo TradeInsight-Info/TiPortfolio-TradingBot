@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -33,6 +34,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app import limiter
 from app.alpaca_client import AlpacaClient, AlpacaError
 from app.calculator import calculate_deltas
+from app import strategies_registry as reg
 from app.order_executor import ExecutionResult, OrderExecutor, OrderResult
 from app.portfolio_config import PortfolioConfigRepository
 from app.rebalance import RebalanceRepository
@@ -145,6 +147,7 @@ def _event_to_dict(event) -> dict:
         "orders":         event.orders,
         "status":         event.status,
         "error_message":  event.error_message,
+        "strategy_id":    event.strategy_id,
     }
 
 # Public-facing helpers for GET /delta
@@ -182,10 +185,11 @@ def _event_to_public_dict(event) -> dict:
       - error_message
     """
     return {
-        "id":        event.id,
-        "timestamp": event.timestamp.isoformat(),
-        "status":    event.status,
-        "orders":    [_format_order_public(o) for o in event.orders],
+        "id":          event.id,
+        "timestamp":   event.timestamp.isoformat(),
+        "status":      event.status,
+        "strategy_id": event.strategy_id,
+        "orders":      [_format_order_public(o) for o in event.orders],
     }
 
 
@@ -233,6 +237,26 @@ def receive_signal():
     error = _validate_weights(body["weights"])
     if error:
         return jsonify({"error": error}), 400
+
+    # Validate strategy_id
+    strategy_id = body.get("strategy_id")
+    try:
+        strategy = reg.get_strategy(strategy_id) if strategy_id else None
+    except (KeyError, TypeError):
+        strategy = None
+    if strategy is None:
+        return jsonify({"error": "Unknown or missing strategy_id."}), 400
+
+    universe = strategy["universe"]
+    if universe:
+        extra = set(body["weights"]) - set(universe)
+        if extra:
+            return jsonify({
+                "error": (
+                    f"Weights contain tickers outside the "
+                    f"'{strategy_id}' universe: {sorted(extra)}"
+                )
+            }), 400
 
     # Log (timestamp + payload hash)
     payload_hash = _payload_hash(body)
@@ -299,11 +323,13 @@ def receive_signal():
             return jsonify({"error": f"Simulated price fetch failed: {exc}"}), 502
 
     else:
-        # 2. Fetch current positions from Alpaca
+        # 2. Fetch current positions from Alpaca (use per-strategy account creds)
+        strat_key    = os.getenv(strategy["alpaca_key_env"], "")
+        strat_secret = os.getenv(strategy["alpaca_secret_env"], "")
         try:
             alpaca = AlpacaClient(
-                api_key=current_app.config["ALPACA_API_KEY"],
-                api_secret=current_app.config["ALPACA_API_SECRET"],
+                api_key=strat_key,
+                api_secret=strat_secret,
                 mode=current_app.config["ALPACA_MODE"],
             )
             current_positions = alpaca.get_positions(
@@ -389,6 +415,7 @@ def receive_signal():
             status="no_change",
             error_message=None,
             timestamp=event_ts,
+            strategy_id=strategy_id,
         )
         return jsonify({
             "status": "no_change",
@@ -422,6 +449,7 @@ def receive_signal():
             target_weights=target_weights,
             payload_hash=payload_hash,
             timestamp=received_at,
+            strategy_id=strategy_id,
         )
         if not created:
             # Race: another request already claimed this hash
@@ -434,8 +462,8 @@ def receive_signal():
             }), 202
 
         executor = OrderExecutor(
-            api_key=current_app.config["ALPACA_API_KEY"],
-            api_secret=current_app.config["ALPACA_API_SECRET"],
+            api_key=strat_key,
+            api_secret=strat_secret,
             base_url=alpaca._base_url,
             alpaca_client=alpaca,
         )
@@ -462,6 +490,7 @@ def receive_signal():
                 status=execution_result.status,
                 error_message=execution_result.error_message,
                 timestamp=event_ts,
+                strategy_id=strategy_id,
             )
         else:
             repo.finalise(
@@ -569,11 +598,17 @@ def refresh_fill_status(event_id: int):
         logger.info("Refresh requested for event %s but no pending orders found.", event_id)
         return jsonify(_event_to_public_dict(event)), 200
 
+    # Resolve the strategy so we use per-strategy account creds, not the default key
+    try:
+        strategy = reg.get_strategy(event.strategy_id)
+    except (KeyError, TypeError):
+        return jsonify({"error": f"Unknown strategy_id '{event.strategy_id}' on event."}), 500
+
     # Build Alpaca client for re-polling
     try:
         alpaca = AlpacaClient(
-            api_key=current_app.config["ALPACA_API_KEY"],
-            api_secret=current_app.config["ALPACA_API_SECRET"],
+            api_key=os.getenv(strategy["alpaca_key_env"], ""),
+            api_secret=os.getenv(strategy["alpaca_secret_env"], ""),
             mode=current_app.config["ALPACA_MODE"],
         )
     except Exception as exc:

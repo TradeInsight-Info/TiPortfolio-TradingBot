@@ -20,21 +20,32 @@ def get_engine():
 
 def ensure_strategy_id_column(engine):
     """Add rebalance_events.strategy_id to a pre-existing DB and backfill to 'vix'.
-    create_all() won't ALTER an existing table, so do it explicitly + idempotently."""
+    create_all() won't ALTER an existing table, so do it explicitly + idempotently.
+
+    SQLite does not support 'ADD COLUMN IF NOT EXISTS'; for SQLite (used in tests)
+    create_all() already creates the column, so we skip the ALTER entirely.
+    """
+    is_sqlite = engine.dialect.name == "sqlite"
     with engine.begin() as conn:
-        conn.execute(_text(
-            "ALTER TABLE rebalance_events "
-            "ADD COLUMN IF NOT EXISTS strategy_id VARCHAR(32) NOT NULL DEFAULT 'vix'"
-        ))
-        # Guard for a partial/legacy migration where the column was added nullable;
-        # on the normal ADD-COLUMN-NOT-NULL-DEFAULT path this matches zero rows.
-        conn.execute(_text(
-            "UPDATE rebalance_events SET strategy_id = 'vix' WHERE strategy_id IS NULL"
-        ))
-        conn.execute(_text(
-            "CREATE INDEX IF NOT EXISTS ix_rebalance_events_strategy_id "
-            "ON rebalance_events (strategy_id)"
-        ))
+        if is_sqlite:
+            # SQLite: create_all() already handled the column; just backfill NULLs.
+            conn.execute(_text(
+                "UPDATE rebalance_events SET strategy_id = 'vix' WHERE strategy_id IS NULL"
+            ))
+        else:
+            conn.execute(_text(
+                "ALTER TABLE rebalance_events "
+                "ADD COLUMN IF NOT EXISTS strategy_id VARCHAR(32) NOT NULL DEFAULT 'vix'"
+            ))
+            # Guard for a partial/legacy migration where the column was added nullable;
+            # on the normal ADD-COLUMN-NOT-NULL-DEFAULT path this matches zero rows.
+            conn.execute(_text(
+                "UPDATE rebalance_events SET strategy_id = 'vix' WHERE strategy_id IS NULL"
+            ))
+            conn.execute(_text(
+                "CREATE INDEX IF NOT EXISTS ix_rebalance_events_strategy_id "
+                "ON rebalance_events (strategy_id)"
+            ))
 
 
 def init_db(app):

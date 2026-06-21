@@ -22,6 +22,7 @@ os.environ["ALPACA_API_KEY"]    = "test-key"
 os.environ["ALPACA_API_SECRET"] = "test-secret"
 os.environ["ALPACA_MODE"]       = "paper"
 os.environ["DATABASE_URL"]      = "sqlite:///:memory:"
+os.environ["TIPORTFOLIO_MODE"]  = "live"   # prevent simulated (yfinance) mode in tests
 
 from app import create_app  # noqa: E402
 
@@ -102,20 +103,20 @@ def post_webhook(client, payload):
 # Happy Path
 class TestValidPayload:
     def test_returns_202(self, client, mock_alpaca):
-        res = post_webhook(client, {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}})
+        res = post_webhook(client, {"strategy_id": "vix", "weights": {"QQQ": 0.5, "BIL": 0.3, "GLD": 0.2}})
         assert res.status_code == 202
 
     def test_body_contains_status_success(self, fresh_client, mock_alpaca):
-        res = post_webhook(fresh_client, {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}})
+        res = post_webhook(fresh_client, {"strategy_id": "vix", "weights": {"QQQ": 0.5, "BIL": 0.3, "GLD": 0.2}})
         assert res.get_json()["status"] == "success"
 
     def test_body_contains_received_at(self, client, mock_alpaca):
-        res = post_webhook(client, {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}})
+        res = post_webhook(client, {"strategy_id": "vix", "weights": {"QQQ": 0.5, "BIL": 0.3, "GLD": 0.2}})
         data = res.get_json()
         assert "received_at" in data
 
     def test_body_contains_payload_hash(self, client, mock_alpaca):
-        payload = {"weights": {"SPY": 0.5, "QQQ": 0.3, "GLD": 0.2}}
+        payload = {"strategy_id": "vix", "weights": {"QQQ": 0.5, "BIL": 0.3, "GLD": 0.2}}
         res = post_webhook(client, payload)
         data = res.get_json()
         assert "payload_hash" in data
@@ -125,12 +126,13 @@ class TestValidPayload:
         assert data["payload_hash"] == expected
 
     def test_weights_summing_to_exactly_1_202(self, fresh_client, mock_alpaca):
-        res = post_webhook(fresh_client, {"weights": {"A": 1.0}})
+        # pit_top5 has an empty universe — any tickers pass the subset check
+        res = post_webhook(fresh_client, {"strategy_id": "pit_top5", "weights": {"A": 1.0}})
         assert res.status_code == 202
 
     def test_weights_within_tolerance_202(self, fresh_client, mock_alpaca):
-        # 0.999 is within ±0.01 of 1.0
-        res = post_webhook(fresh_client, {"weights": {"SPY": 0.5, "QQQ": 0.499}})
+        # 0.999 is within ±0.01 of 1.0; BIL/QQQ are in the vix universe
+        res = post_webhook(fresh_client, {"strategy_id": "vix", "weights": {"QQQ": 0.5, "BIL": 0.499}})
         assert res.status_code == 202
 
 # Validation errors - 400 
@@ -197,32 +199,32 @@ def fresh_client():
 class TestPortfolioEquityAndAudit:
     def test_every_call_fetches_live_equity(self, fresh_client, mock_alpaca):
         mock_client, _ = mock_alpaca
-        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
-        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        post_webhook(fresh_client, {"strategy_id": "vix", "weights": {"QQQ": 1.0}})
+        post_webhook(fresh_client, {"strategy_id": "vix", "weights": {"BIL": 1.0}})
         assert mock_client.get_account_equity.call_count == 2
 
     def test_initial_amount_saved_on_first_call(self, fresh_client, mock_alpaca):
-        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        post_webhook(fresh_client, {"strategy_id": "vix", "weights": {"QQQ": 1.0}})
         config = fresh_client.get("/config").get_json()
         assert config["initial_amount"] == 10_000.0
 
     def test_initial_amount_not_overwritten_on_second_call(self, fresh_client, mock_alpaca):
         mock_client, _ = mock_alpaca
-        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        post_webhook(fresh_client, {"strategy_id": "vix", "weights": {"QQQ": 1.0}})
         mock_client.get_account_equity.return_value = 15_000.0
-        post_webhook(fresh_client, {"weights": {"SPY": 1.0}})
+        post_webhook(fresh_client, {"strategy_id": "vix", "weights": {"BIL": 1.0}})
         config = fresh_client.get("/config").get_json()
         assert config["initial_amount"] == 10_000.0
 
 
 class TestSymbolUniverseWarning:
     def test_no_warning_on_first_rebalance(self, app, mock_alpaca, caplog):
-        # No prior events in DB → no warning
+        # No prior events in DB → no warning; QQQ/BIL are in the vix universe
         with app.test_client() as client:
             with caplog.at_level(logging.WARNING, logger="app.webhook"):
                 resp = client.post(
                     "/webhook",
-                    json={"weights": {"SPY": 0.6, "QQQ": 0.4}},
+                    json={"strategy_id": "vix", "weights": {"QQQ": 0.6, "BIL": 0.4}},
                     headers={"Authorization": "Bearer test-secret"},
                 )
         assert resp.status_code == 202
@@ -230,12 +232,12 @@ class TestSymbolUniverseWarning:
 
     def test_warning_when_symbols_change(self, app, mock_alpaca, caplog, seeded_success_event):
         # seeded_success_event has target_weights {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}
-        # Incoming payload has SPY — universe changed
+        # Incoming payload has only QQQ — universe changed (BIL/GLD dropped)
         with app.test_client() as client:
             with caplog.at_level(logging.WARNING, logger="app.webhook"):
                 resp = client.post(
                     "/webhook",
-                    json={"weights": {"SPY": 1.0}},
+                    json={"strategy_id": "vix", "weights": {"QQQ": 1.0}},
                     headers={"Authorization": "Bearer test-secret"},
                 )
         assert resp.status_code == 202
@@ -246,7 +248,7 @@ class TestSymbolUniverseWarning:
             with caplog.at_level(logging.WARNING, logger="app.webhook"):
                 resp = client.post(
                     "/webhook",
-                    json={"weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                    json={"strategy_id": "vix", "weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
                     headers={"Authorization": "Bearer test-secret"},
                 )
         assert resp.status_code == 202
@@ -272,13 +274,13 @@ class TestPositionDriftLogging:
                 with caplog.at_level(logging.WARNING, logger="app.webhook"):
                     client.post(
                         "/webhook",
-                        json={"weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                        json={"strategy_id": "vix", "weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
                         headers={"Authorization": "Bearer test-secret"},
                     )
         assert "position_drift_detected" not in caplog.text
 
     def test_drift_warning_when_unexpected_symbol_held(self, app, caplog, seeded_success_event):
-        """Drift detected when Alpaca holds SPY but last event targeted QQQ/BIL/GLD."""
+        """Drift detected when Alpaca holds an unexpected symbol (SPY position via get_positions)."""
         mock_client = MagicMock()
         # Alpaca has SPY (unexpected) alongside the expected symbols
         mock_client.get_positions.return_value = {"QQQ": 10.0, "BIL": 16.0, "GLD": 2.0, "SPY": 8.0}
@@ -296,7 +298,7 @@ class TestPositionDriftLogging:
                 with caplog.at_level(logging.WARNING, logger="app.webhook"):
                     client.post(
                         "/webhook",
-                        json={"weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                        json={"strategy_id": "vix", "weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
                         headers={"Authorization": "Bearer test-secret"},
                     )
         assert "position_drift_detected" in caplog.text
@@ -317,7 +319,7 @@ class TestPositionDriftLogging:
                 with caplog.at_level(logging.WARNING, logger="app.webhook"):
                     client.post(
                         "/webhook",
-                        json={"weights": {"QQQ": 1.0}},
+                        json={"strategy_id": "vix", "weights": {"QQQ": 1.0}},
                         headers={"Authorization": "Bearer test-secret"},
                     )
         assert "position_drift_detected" not in caplog.text
@@ -339,7 +341,59 @@ class TestPositionDriftLogging:
                 with caplog.at_level(logging.WARNING, logger="app.webhook"):
                     client.post(
                         "/webhook",
-                        json={"weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                        json={"strategy_id": "vix", "weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
                         headers={"Authorization": "Bearer test-secret"},
                     )
         assert "position_drift_detected" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# refresh_fill_status — per-strategy creds
+# ---------------------------------------------------------------------------
+
+class TestRefreshFillStatus:
+    def test_refresh_uses_per_strategy_creds(self, app):
+        """POST /delta/<id>/refresh must build AlpacaClient with the event's strategy creds."""
+        from app.rebalance import RebalanceRepository
+
+        os.environ["ALPACA_KEY_TREND"]    = "trend-refresh-key"
+        os.environ["ALPACA_SECRET_TREND"] = "trend-refresh-secret"
+
+        pending_order = {
+            "symbol": "SPY",
+            "direction": "buy",
+            "delta_shares": 5,
+            "alpaca_order_id": "order-abc",
+            "fill_status": "pending",
+        }
+
+        with app.app_context():
+            repo = RebalanceRepository(app.config["DB_SESSION"])
+            event = repo.save(
+                target_weights={"SPY": 0.5, "QQQ": 0.5},
+                orders=[pending_order],
+                status="pending",
+                strategy_id="trend_broad",
+            )
+            event_id = event.id
+
+        mock_alpaca_instance = MagicMock()
+        mock_alpaca_instance.get_order.return_value = {
+            "id": "order-abc",
+            "status": "filled",
+            "filled_qty": "5",
+            "filled_avg_price": "100.00",
+        }
+
+        with patch("app.webhook.AlpacaClient") as patched_cls:
+            patched_cls.return_value = mock_alpaca_instance
+            with app.test_client() as c:
+                res = c.post(
+                    f"/delta/{event_id}/refresh",
+                    headers={"Authorization": "Bearer test-secret"},
+                )
+
+        assert res.status_code == 200
+        call_kwargs = patched_cls.call_args
+        assert call_kwargs.kwargs.get("api_key") == "trend-refresh-key"
+        assert call_kwargs.kwargs.get("api_secret") == "trend-refresh-secret"
