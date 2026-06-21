@@ -5,13 +5,18 @@ const KEY_PREFIX = 'tradeinsight_';
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Build the localStorage key for a given view and optional ticker.
+ * Build the localStorage key for a given view and optional qualifier parts.
+ * Variadic: any number of parts after view are joined with '_', falsy parts filtered out.
  * Examples:
- *   cacheKey('delta')          -> 'tradeinsight_delta'
- *   cacheKey('benchmark','SPY') -> 'tradeinsight_benchmark_SPY'
+ *   cacheKey('delta')                    -> 'tradeinsight_delta'
+ *   cacheKey('benchmark', 'SPY')         -> 'tradeinsight_benchmark_SPY'
+ *   cacheKey('benchmark', 'SPY', 'vix')  -> 'tradeinsight_benchmark_SPY_vix'
  */
-export function cacheKey(view, ticker = '') {
-  return ticker ? `${KEY_PREFIX}${view}_${ticker}` : `${KEY_PREFIX}${view}`;
+export function cacheKey(view, ...parts) {
+  const segments = parts.filter(Boolean);
+  return segments.length
+    ? `${KEY_PREFIX}${view}_${segments.join('_')}`
+    : `${KEY_PREFIX}${view}`;
 }
 
 /**

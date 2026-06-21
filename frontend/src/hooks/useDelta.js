@@ -1,19 +1,31 @@
 import { useState, useEffect, useCallback } from "react";
 import { cacheKey, readCache, writeCache, clearCache } from '../utils/cache';
+import { useStrategy } from '../context/StrategyContext';
 
 // In dev, Vite proxies /api → localhost:5000. In prod (Cloudflare Pages),
 // VITE_API_BASE_URL points directly at the Flask host (no /api prefix on Flask).
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
-const CACHE_KEY = cacheKey('delta');
 
-export function useDelta() {  
-  // Initialise from cache immediately so the UI renders without waiting for the network
-  const cached = readCache(CACHE_KEY);
-  const [events, setEvents] = useState(cached?.events ?? []);
+export function useDelta() {
+  const { strategyId } = useStrategy();
+
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    // Guard: don't fire until a strategy is selected
+    if (!strategyId) return;
+
+    // Per-strategy cache key so switching strategies never merges event lists
+    const CACHE_KEY = cacheKey('delta', strategyId);
+    const cached = readCache(CACHE_KEY);
+
+    // Seed state from cache immediately so the UI renders without waiting
+    setEvents(cached?.events ?? []);
+    setLoading(true);
+    setError(null);
+
     let cancelled = false;
 
     async function fetchDelta() {
@@ -26,11 +38,13 @@ export function useDelta() {
       if (cacheIsStale) {
         clearCache(CACHE_KEY);
       }
+
       // Build the incremental URL: if we have cached data, ask for newer records
       const latestTimestamp = (!cacheIsStale && cached?.latestTimestamp) ? cached.latestTimestamp : null;
-      const url = latestTimestamp
-        ? `${API_BASE}/delta?since=${encodeURIComponent(latestTimestamp)}`
-        : `${API_BASE}/delta`;
+
+      const params = new URLSearchParams({ strategy_id: strategyId });
+      if (latestTimestamp) params.set("since", latestTimestamp);
+      const url = `${API_BASE}/delta?${params.toString()}`;
 
       try {
         const response = await fetch(url);
@@ -50,7 +64,7 @@ export function useDelta() {
           const freshEvents = data.events ?? [];
           setEvents(freshEvents);
           if (freshEvents.length > 0) {
-            persistCache(freshEvents);
+            persistCache(CACHE_KEY, freshEvents);
           }
           return;
         }
@@ -64,16 +78,16 @@ export function useDelta() {
         if (cacheIsStale) {
           setEvents(incoming);
           if (incoming.length > 0) {
-            persistCache(incoming);
+            persistCache(CACHE_KEY, incoming);
           }
           return;
         }
-        
+
         // Merge: new records come first (newest-first order), sorted by timestamp
         const merged = mergeEvents(cached?.events ?? [], incoming);
         setEvents(merged);
         if (merged.length > 0) {
-          persistCache(merged);
+          persistCache(CACHE_KEY, merged);
         }
 
       } catch (err) {
@@ -93,7 +107,7 @@ export function useDelta() {
     return () => {
       cancelled = true;
     };
-  }, []); // Run once on mount
+  }, [strategyId]); // Re-run whenever the active strategy changes
 
   /**
    * Re-poll Alpaca fill status for a single event's pending orders.
@@ -106,6 +120,8 @@ export function useDelta() {
    * @returns {{ ok: boolean, error?: string }}
    */
   const refreshEvent = useCallback(async (eventId) => {
+    if (!strategyId) return { ok: false, error: "No strategy selected" };
+    const CACHE_KEY = cacheKey('delta', strategyId);
     try {
       const response = await fetch(`${API_BASE}/delta/${eventId}/refresh`, {
         method: "POST",
@@ -119,7 +135,7 @@ export function useDelta() {
       // Swap the stale event in state with the updated one returned by the server
       setEvents(prev => {
         const updated = prev.map(e => (e.id === eventId ? data : e));
-        persistCache(updated);
+        persistCache(CACHE_KEY, updated);
         return updated;
       });
 
@@ -127,21 +143,21 @@ export function useDelta() {
     } catch (err) {
       return { ok: false, error: err.message };
     }
-  }, []);
+  }, [strategyId]);
 
   return { events, loading, error, refreshEvent };
 }
 
 /**
  * Merge cached events with incoming events from the background fetch.
- * Incoming records (from ?since=...) are prepended; 
+ * Incoming records (from ?since=...) are prepended;
  * duplicates are removed by timestamp.
  * Final list remains sorted newest-first.
  */
 function mergeEvents(cachedEvents, incomingEvents) {
   const seen = new Set(cachedEvents.map((e) => e.timestamp));
   const truly_new = incomingEvents.filter((e) => !seen.has(e.timestamp));
-  
+
   // Explicitly sort newest-first, regardless of input order
   return [...truly_new, ...cachedEvents].sort((a, b) =>
     new Date(b.timestamp) - new Date(a.timestamp)
@@ -152,7 +168,7 @@ function mergeEvents(cachedEvents, incomingEvents) {
  * Retrieves the latest timestamp from the merged list and persist to localStorage.
  * The latest timestamp is the first element's timestamp (newest-first order).
  */
-function persistCache(events) {
+function persistCache(key, events) {
   const latestTimestamp = events.length > 0 ? events[0].timestamp : null;
-  writeCache(CACHE_KEY, { events, latestTimestamp });
+  writeCache(key, { events, latestTimestamp });
 }

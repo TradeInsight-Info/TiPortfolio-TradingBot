@@ -5,11 +5,13 @@ import IntroSection from "./components/IntroSection";
 import PerformanceMetrics from "./components/PerformanceMetrics";
 import PositionSummary from "./components/PositionSummary";
 import { useTheme } from "./hooks/useTheme";
+import { StrategyProvider, useStrategy } from "./context/StrategyContext";
 
-function App() {
+function AppContent() {
   useTheme(); // sync OS preference → html.dark class
 
   const [activeSection, setActiveSection] = useState("intro");
+  const { strategies, strategyId, setStrategyId, loading: strategiesLoading, error: strategiesError } = useStrategy();
 
   useEffect(() => {
     const sections = ["intro", "performance", "trades"];
@@ -64,8 +66,34 @@ function App() {
           Cumulative return of the bot vs. market benchmarks, indexed from the
           first rebalance date.
         </p>
-        <BenchmarkChart />
-        <PerformanceMetrics />
+        {strategies.length > 1 && (
+          <div className="flex flex-wrap gap-2 mb-6">
+            {strategies.map((s) => (
+              <button
+                key={s.id}
+                aria-pressed={strategyId === s.id}
+                onClick={() => setStrategyId(s.id)}
+                className={
+                  strategyId === s.id
+                    ? "font-semibold text-primary border border-primary rounded px-3 py-1"
+                    : "text-foreground hover:text-primary transition-colors border border-border rounded px-3 py-1"
+                }
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {strategiesLoading ? null : strategies.length === 0 ? (
+          <p className="text-muted-foreground py-8">
+            {strategiesError ? `Could not load strategies: ${strategiesError}` : "No strategies available."}
+          </p>
+        ) : (
+          <>
+            <BenchmarkChart />
+            <PerformanceMetrics />
+          </>
+        )}
       </section>
 
       <section id="trades" className="max-w-7xl mx-auto px-4 py-16">
@@ -75,9 +103,23 @@ function App() {
           first.
         </p>
         <PositionSummary />
-        <DeltaTable />
+        {!strategiesLoading && strategies.length === 0 ? (
+          <p className="text-muted-foreground py-8">
+            {strategiesError ? `Could not load strategies: ${strategiesError}` : "No strategies available."}
+          </p>
+        ) : (
+          <DeltaTable />
+        )}
       </section>
     </>
+  );
+}
+
+function App() {
+  return (
+    <StrategyProvider>
+      <AppContent />
+    </StrategyProvider>
   );
 }
 
