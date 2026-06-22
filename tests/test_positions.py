@@ -1,13 +1,17 @@
 """Tests for GET /positions."""
 from __future__ import annotations
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 import pytest
 
 os.environ.setdefault("ALPACA_API_KEY",    "test-key")
 os.environ.setdefault("ALPACA_API_SECRET", "test-secret")
 os.environ.setdefault("ALPACA_MODE",       "paper")
 os.environ.setdefault("DATABASE_URL",      "sqlite:///:memory:")
+os.environ.setdefault("ALPACA_KEY_VIX",    "vix-key")
+os.environ.setdefault("ALPACA_SECRET_VIX", "vix-secret")
+os.environ.setdefault("ALPACA_KEY_TREND",  "trend-key")
+os.environ.setdefault("ALPACA_SECRET_TREND", "trend-secret")
 
 from app import create_app  # noqa: E402
 import app.positions as positions_module  # noqa: E402
@@ -71,9 +75,9 @@ class TestGetPositions:
             with app.test_client() as client:
                 client.get("/positions")
 
-        # Expire cache by backdating it
+        # Expire cache by backdating it (cache is keyed by None for default path)
         from datetime import timedelta
-        positions_module._cache["fetched_at"] -= timedelta(hours=2)
+        positions_module._cache[None]["fetched_at"] -= timedelta(hours=2)
 
         # Alpaca now fails
         failing = MagicMock()
@@ -93,3 +97,51 @@ class TestGetPositions:
             with app.test_client() as client:
                 resp = client.get("/positions")
         assert resp.status_code == 503
+
+
+class TestGetPositionsStrategyAware:
+    def test_uses_per_strategy_creds_when_strategy_id_given(self, app):
+        """AlpacaClient is constructed with the strategy's env creds, not config defaults."""
+        with patch("app.positions.AlpacaClient") as MockClient:
+            MockClient.return_value = _mock_alpaca()
+            with app.test_client() as client:
+                resp = client.get("/positions?strategy_id=vix")
+        assert resp.status_code == 200
+        MockClient.assert_called_once_with(
+            api_key="vix-key",
+            api_secret="vix-secret",
+            mode="paper",
+        )
+
+    def test_different_strategies_use_separate_cache_entries(self, app):
+        """Two different strategy_ids each call Alpaca once — cache is not shared."""
+        with patch("app.positions.AlpacaClient") as MockClient:
+            MockClient.return_value = _mock_alpaca()
+            with app.test_client() as client:
+                client.get("/positions?strategy_id=vix")
+                client.get("/positions?strategy_id=trend_broad")
+        # Each strategy must hit Alpaca independently
+        assert MockClient.call_count == 2
+        call_args = [c.kwargs for c in MockClient.call_args_list]
+        assert call_args[0]["api_key"] == "vix-key"
+        assert call_args[1]["api_key"] == "trend-key"
+
+    def test_unknown_strategy_id_returns_400(self, app):
+        with patch("app.positions.AlpacaClient", return_value=_mock_alpaca()):
+            with app.test_client() as client:
+                resp = client.get("/positions?strategy_id=nonexistent")
+        assert resp.status_code == 400
+        assert "Unknown strategy_id" in resp.get_json()["error"]
+
+    def test_no_strategy_id_uses_default_config_creds(self, app):
+        """Backward compat: omitting strategy_id uses ALPACA_API_KEY/SECRET from config."""
+        with patch("app.positions.AlpacaClient") as MockClient:
+            MockClient.return_value = _mock_alpaca()
+            with app.test_client() as client:
+                resp = client.get("/positions")
+        assert resp.status_code == 200
+        MockClient.assert_called_once_with(
+            api_key=app.config["ALPACA_API_KEY"],
+            api_secret=app.config["ALPACA_API_SECRET"],
+            mode=app.config["ALPACA_MODE"],
+        )
