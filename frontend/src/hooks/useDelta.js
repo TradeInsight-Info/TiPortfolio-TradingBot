@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { cacheKey, readCache, writeCache, clearCache } from '../utils/cache';
 import { useStrategy } from '../context/StrategyContext';
 
@@ -109,43 +109,7 @@ export function useDelta() {
     };
   }, [strategyId]); // Re-run whenever the active strategy changes
 
-  /**
-   * Re-poll Alpaca fill status for a single event's pending orders.
-   *
-   * Called when the user clicks the retry button on a pending event.
-   * Updates the matching event in local state (and cache) with the
-   * freshest fill data returned by the server.
-   *
-   * @param {number} eventId - The event's numeric id from the API response.
-   * @returns {{ ok: boolean, error?: string }}
-   */
-  const refreshEvent = useCallback(async (eventId) => {
-    if (!strategyId) return { ok: false, error: "No strategy selected" };
-    const CACHE_KEY = cacheKey('delta', strategyId);
-    try {
-      const response = await fetch(`${API_BASE}/delta/${eventId}/refresh`, {
-        method: "POST",
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        return { ok: false, error: data.error ?? `Server returned ${response.status}` };
-      }
-
-      // Swap the stale event in state with the updated one returned by the server
-      setEvents(prev => {
-        const updated = prev.map(e => (e.id === eventId ? data : e));
-        persistCache(CACHE_KEY, updated);
-        return updated;
-      });
-
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  }, [strategyId]);
-
-  return { events, loading, error, refreshEvent };
+  return { events, loading, error };
 }
 
 /**

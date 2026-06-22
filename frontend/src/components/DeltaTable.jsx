@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useDelta } from "../hooks/useDelta";
 
 // Badge variant → utility class mapping (replaces daisyUI badge-*)
@@ -99,49 +98,9 @@ function formatQty(value) {
   return Number.isInteger(n) ? String(n) : n.toFixed(4).replace(/\.?0+$/, "");
 }
 
-function RetryButton({ eventId, onRefresh }) {
-  const [busy, setBusy] = useState(false);
-  const [retryError, setRetryError] = useState(null);
-
-  async function handleClick() {
-    setBusy(true);
-    setRetryError(null);
-    const result = await onRefresh(eventId);
-    if (!result.ok) {
-      setRetryError(result.error ?? "Refresh failed.");
-    }
-    setBusy(false);
-  }
-
-  return (
-    <div className="flex flex-col items-start gap-1 mt-1">
-      <div className="flex items-center gap-1">
-        <WarningIcon />
-        <span className="text-xs text-orange-500">Fill unconfirmed</span>
-      </div>
-      <button
-        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-yellow-500 text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 transition-colors disabled:opacity-50"
-        onClick={handleClick}
-        disabled={busy}
-      >
-        {busy ? (
-          <>
-            <span className="animate-spin inline-block h-3 w-3 border-2 border-current border-t-transparent rounded-full" />
-            Checking…
-          </>
-        ) : (
-          "Retry polling"
-        )}
-      </button>
-      {retryError && (
-        <span className="text-xs text-destructive">{retryError}</span>
-      )}
-    </div>
-  );
-}
 
 export default function DeltaTable() {
-  const { events, loading, error, refreshEvent } = useDelta();
+  const { events, loading, error } = useDelta();
 
   if (loading) {
     return (
@@ -251,7 +210,10 @@ export default function DeltaTable() {
                 >
                   <div>{row.date}</div>
                   {row.pending && (
-                    <RetryButton eventId={row.eventId} onRefresh={refreshEvent} />
+                    <div className="flex items-center gap-1 mt-1">
+                      <WarningIcon />
+                      <span className="text-xs text-orange-500">Fill unconfirmed</span>
+                    </div>
                   )}
                 </td>
               )}
