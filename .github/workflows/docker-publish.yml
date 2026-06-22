@@ -56,9 +56,6 @@ jobs:
           - image: tiportfolio-tradingbot
             context: .
             dockerfile: Dockerfile
-          - image: tiportfolio-scheduler
-            context: ./scheduler
-            dockerfile: ./scheduler/Dockerfile
 
     steps:
       - name: Checkout
