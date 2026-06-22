@@ -31,6 +31,14 @@ export default function PositionSummary() {
 
   if (!data) return null;
 
+  if (data.configured === false) {
+    return (
+      <p className="text-sm text-muted-foreground py-2">
+        No live positions — this strategy&apos;s account isn&apos;t connected yet.
+      </p>
+    );
+  }
+
   const { positions = [], equity, cash, stale } = data;
   return (
     <div className="rounded-lg border border-border bg-card p-4 mb-6">

@@ -145,3 +145,43 @@ class TestGetPositionsStrategyAware:
             api_secret=app.config["ALPACA_API_SECRET"],
             mode=app.config["ALPACA_MODE"],
         )
+
+    def test_empty_creds_returns_not_configured_without_calling_alpaca(self, app, monkeypatch):
+        """When a strategy's creds are not in env, return 200 configured:false without calling Alpaca."""
+        monkeypatch.delenv("ALPACA_KEY_VIX", raising=False)
+        monkeypatch.delenv("ALPACA_SECRET_VIX", raising=False)
+        with patch("app.positions.AlpacaClient") as MockClient:
+            with app.test_client() as client:
+                resp = client.get("/positions?strategy_id=vix")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["configured"] is False
+        assert data["positions"] == []
+        assert data["equity"] is None
+        assert data["cash"] is None
+        MockClient.assert_not_called()
+
+    def test_alpaca_401_returns_not_configured(self, app):
+        """Alpaca 401/unauthorized → 200 configured:false (not a 503 error)."""
+        from app.alpaca_client import AlpacaError
+        failing = MagicMock()
+        failing.list_positions_full.side_effect = AlpacaError(
+            "Alpaca API returned HTTP 401: unauthorized", status_code=401
+        )
+        with patch("app.positions.AlpacaClient", return_value=failing):
+            with app.test_client() as client:
+                resp = client.get("/positions?strategy_id=vix")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["configured"] is False
+        assert data["positions"] == []
+
+    def test_non_401_alpaca_error_still_returns_503(self, app):
+        """Non-401 AlpacaErrors still produce 503 (regression guard)."""
+        from app.alpaca_client import AlpacaError
+        failing = MagicMock()
+        failing.list_positions_full.side_effect = AlpacaError("connection timeout")
+        with patch("app.positions.AlpacaClient", return_value=failing):
+            with app.test_client() as client:
+                resp = client.get("/positions?strategy_id=vix")
+        assert resp.status_code == 503

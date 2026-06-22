@@ -80,4 +80,19 @@ describe('usePositions', () => {
     );
     expect(positionsCalls.length).toBe(0);
   });
+
+  it('sets data (not error) when response is configured:false', async () => {
+    const NOT_CONFIGURED = { positions: [], equity: null, cash: null, configured: false, as_of: null };
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => STRATEGIES })
+      .mockResolvedValueOnce({ ok: true, json: async () => NOT_CONFIGURED });
+
+    const { result } = renderHook(() => usePositions(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.data).toEqual(NOT_CONFIGURED);
+  });
 });

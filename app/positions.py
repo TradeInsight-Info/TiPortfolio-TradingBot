@@ -72,6 +72,17 @@ def get_positions():
         api_key    = current_app.config["ALPACA_API_KEY"]
         api_secret = current_app.config["ALPACA_API_SECRET"]
 
+    _NOT_CONFIGURED = {
+        "positions": [],
+        "equity":    None,
+        "cash":      None,
+        "configured": False,
+        "as_of":     None,
+    }
+
+    if strategy is not None and (not api_key or not api_secret):
+        return jsonify(_NOT_CONFIGURED), 200
+
     try:
         alpaca = AlpacaClient(
             api_key=api_key,
@@ -81,6 +92,10 @@ def get_positions():
         positions = alpaca.list_positions_full()
         account   = alpaca.get_account()
     except AlpacaError as exc:
+        exc_msg = str(exc).lower()
+        if "401" in exc_msg or "unauthorized" in exc_msg:
+            logger.info("Alpaca returned 401 for strategy %r — treating as not configured", strategy_id)
+            return jsonify(_NOT_CONFIGURED), 200
         logger.error("Alpaca positions fetch failed: %s", exc)
         with _cache_lock:
             if cache_entry:
@@ -88,10 +103,11 @@ def get_positions():
         return jsonify({"error": f"Failed to fetch positions from Alpaca: {exc}"}), 503
 
     data = {
-        "positions": positions,
-        "equity":    account["equity"],
-        "cash":      account["cash"],
-        "as_of":     now.isoformat(),
+        "positions":  positions,
+        "equity":     account["equity"],
+        "cash":       account["cash"],
+        "configured": True,
+        "as_of":      now.isoformat(),
     }
     with _cache_lock:
         _cache[strategy_id] = {"data": data, "fetched_at": now}
