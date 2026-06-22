@@ -99,18 +99,24 @@ spec:
                   name: default-secrets
                   key: tiportfolio-sentry-dsn
                   optional: true
+            # Phase 1: vix reuses the EXISTING Alpaca account (same key as the
+            # legacy single-account bot) so it deploys with no new secret.
             - name: ALPACA_KEY_VIX
-              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-key-vix } }
+              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-api-key } }
             - name: ALPACA_SECRET_VIX
-              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-secret-vix } }
+              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-api-secret } }
+            # Phase 2: trend_broad + pit_top5 use their own new paper accounts.
+            # Marked optional so the pod starts BEFORE these secret keys exist;
+            # until populated, those strategies' webhooks fail visibly (empty creds),
+            # and their scheduler CronJobs are not applied (see k8s/schedulers-*.yaml).
             - name: ALPACA_KEY_TREND
-              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-key-trend } }
+              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-key-trend, optional: true } }
             - name: ALPACA_SECRET_TREND
-              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-secret-trend } }
+              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-secret-trend, optional: true } }
             - name: ALPACA_KEY_PIT
-              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-key-pit } }
+              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-key-pit, optional: true } }
             - name: ALPACA_SECRET_PIT
-              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-secret-pit } }
+              valueFrom: { secretKeyRef: { name: default-secrets, key: tiportfolio-alpaca-secret-pit, optional: true } }
 
 ---
 apiVersion: v1
