@@ -27,6 +27,7 @@ import yfinance as yf
 from flask import Blueprint, current_app, jsonify, request
 
 from app.alpaca_client import AlpacaClient, AlpacaError
+from app import limiter, PUBLIC_READ_LIMIT
 from app import strategies_registry as reg
 from app.portfolio_config import PortfolioConfigRepository
 from app.rebalance import RebalanceRepository
@@ -267,6 +268,7 @@ def _alpaca_equity_curve(
 
 
 @bp.route("/benchmark", methods=["GET"])
+@limiter.limit(PUBLIC_READ_LIMIT)
 def get_benchmark():
     """
     Return bot equity curve and benchmark cumulative return.

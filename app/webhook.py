@@ -32,7 +32,7 @@ from decimal import Decimal
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import limiter
+from app import limiter, PUBLIC_READ_LIMIT
 from app.alpaca_client import AlpacaClient, AlpacaError
 from app.calculator import calculate_deltas
 from app import strategies_registry as reg
@@ -591,6 +591,7 @@ def receive_signal():
     }), 202
 
 @bp.route("/strategies", methods=["GET"])
+@limiter.limit(PUBLIC_READ_LIMIT)
 def list_strategies():
     """
     Return all registered trading strategies.
@@ -602,6 +603,7 @@ def list_strategies():
 
 
 @bp.route("/delta", methods=["GET"])
+@limiter.limit(PUBLIC_READ_LIMIT)
 def get_delta():
     """
     Return all rebalance records from the database, newest first.
@@ -659,6 +661,7 @@ def get_delta():
     }), 200
 
 @bp.route("/config", methods=["GET"])
+@limiter.limit(PUBLIC_READ_LIMIT)
 def get_config():
     """
     Return the stored initial portfolio amount.
@@ -678,6 +681,7 @@ def get_config():
 
 
 @bp.route("/market/clock", methods=["GET"])
+@limiter.limit(PUBLIC_READ_LIMIT)
 def market_clock():
     """
     Return Alpaca market clock. No auth required — read-only.

@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, current_app, jsonify, request
 
 from app.alpaca_client import AlpacaClient, AlpacaError
+from app import limiter, PUBLIC_READ_LIMIT
 from app import strategies_registry as reg
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ _cache_lock = threading.Lock()
 
 
 @bp.get("/positions")
+@limiter.limit(PUBLIC_READ_LIMIT)
 def get_positions():
     """
     Return live Alpaca positions, equity, and cash.

@@ -12,6 +12,10 @@ from app import models, portfolio_config  # noqa: F401
 # Module-level so blueprints can import and decorate with @limiter.limit(...)
 limiter = Limiter(key_func=get_remote_address, storage_uri="memory://", default_limits=[])
 
+# Per-IP rate limit for public read endpoints. Storage is in-process (memory://):
+# exact at replicas=1; if scaled out, the effective limit becomes ~N x this per IP.
+PUBLIC_READ_LIMIT = "5 per second"
+
 load_dotenv()
 
 REQUIRED_VARS = ["ALPACA_API_KEY", "ALPACA_API_SECRET", "ALPACA_MODE", "WEBHOOK_SECRET"]
@@ -62,6 +66,8 @@ def create_app():
             raise EnvironmentError(f"Missing required env vars: {', '.join(missing)}")
 
     app = Flask(__name__)
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
     app.config["APP_MODE"]          = app_mode
     app.config["ALPACA_API_KEY"]    = os.getenv("ALPACA_API_KEY", "")
     app.config["ALPACA_API_SECRET"] = os.getenv("ALPACA_API_SECRET", "")

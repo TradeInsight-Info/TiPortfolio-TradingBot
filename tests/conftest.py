@@ -14,6 +14,21 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.rebalance import RebalanceRepository
+from app import limiter
+
+
+@pytest.fixture(autouse=True)
+def reset_limiter():
+    """Reset rate-limit storage between every test so counts don't bleed across tests."""
+    try:
+        limiter.reset()
+    except AssertionError:
+        pass  # storage not yet initialised (no app context yet)
+    yield
+    try:
+        limiter.reset()
+    except (AssertionError, Exception):
+        pass
 
 # Engine
 @pytest.fixture(scope="session")
