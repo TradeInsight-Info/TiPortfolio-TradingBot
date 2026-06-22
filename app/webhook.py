@@ -1,7 +1,6 @@
 """
 POST /webhook                    - receive a target-portfolio signal and execute a rebalance.
 GET  /delta                      - return all rebalance records stored in the DB.
-POST /delta/<event_id>/refresh   - re-poll Alpaca fill status for pending orders.
 
 Processing choice: SYNCHRONOUS
   1. Validate the incoming weights payload.
@@ -25,7 +24,9 @@ import hashlib
 import json
 import logging
 import os
-from datetime import date, datetime, timezone
+import threading
+import time
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from flask import Blueprint, current_app, jsonify, request
@@ -53,6 +54,79 @@ _TERMINAL_FILL_STATUSES = frozenset({
     "rejected",
     "done_for_day",
 })
+
+_RECONCILE_WINDOW = timedelta(days=7)
+_RECONCILE_COOLDOWN_S = 60.0
+_reconcile_cooldown: dict[int, float] = {}   # event_id -> monotonic ts of last re-poll
+_reconcile_lock = threading.Lock()
+
+
+def _reconcile_event(event, repo) -> None:
+    """Re-poll this event's pending orders via its strategy account; persist updates.
+    Swallows per-order Alpaca errors. No-op if no creds / no pending orders."""
+    updated = [dict(o) for o in event.orders]
+    pending_idx = [i for i, o in enumerate(updated)
+                   if o.get("alpaca_order_id") and o.get("fill_status") not in _TERMINAL_FILL_STATUSES]
+    if not pending_idx:
+        return
+    try:
+        strategy = reg.get_strategy(event.strategy_id)
+    except (KeyError, TypeError):
+        return
+    key = os.getenv(strategy["alpaca_key_env"], "")
+    secret = os.getenv(strategy["alpaca_secret_env"], "")
+    if not key or not secret:
+        return
+    try:
+        alpaca = AlpacaClient(api_key=key, api_secret=secret, mode=current_app.config["ALPACA_MODE"])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("reconcile: client build failed event=%s err=%s", event.id, exc)
+        return
+    changed = False
+    for i in pending_idx:
+        order = updated[i]
+        try:
+            body = alpaca.get_order(order["alpaca_order_id"])
+        except AlpacaError as exc:
+            logger.warning("reconcile: re-poll failed event=%s order=%s err=%s",
+                           event.id, order["alpaca_order_id"], exc)
+            continue
+        status = body.get("status", "unknown")
+        if status != order.get("fill_status"):
+            changed = True
+        updated[i]["fill_status"] = status
+        if status in _TERMINAL_FILL_STATUSES:
+            rq, rp = body.get("filled_qty"), body.get("filled_avg_price")
+            updated[i]["filled_qty"] = float(rq) if rq else None
+            updated[i]["filled_avg_price"] = float(rp) if rp else None
+    if changed:
+        try:
+            repo.update_orders(event.id, updated)
+            event.orders = updated   # reflect in the current /delta response, not just the next
+        except SQLAlchemyError as exc:
+            logger.error("reconcile: DB update failed event=%s err=%s", event.id, exc)
+    with _reconcile_lock:
+        if all(o.get("fill_status") in _TERMINAL_FILL_STATUSES for o in updated):
+            _reconcile_cooldown.pop(event.id, None)
+
+
+def reconcile_pending(events, repo) -> None:
+    """Reconcile recent events with pending fills, bounded by a per-event cooldown."""
+    now_wall = datetime.now(timezone.utc)
+    now_mono = time.monotonic()
+    for event in events:
+        if (now_wall - event.timestamp) > _RECONCILE_WINDOW:
+            continue
+        if not any(o.get("alpaca_order_id") and o.get("fill_status") not in _TERMINAL_FILL_STATUSES
+                   for o in (event.orders or [])):
+            continue
+        with _reconcile_lock:
+            last = _reconcile_cooldown.get(event.id, 0.0)
+            if now_mono - last < _RECONCILE_COOLDOWN_S:
+                continue
+            _reconcile_cooldown[event.id] = now_mono
+        _reconcile_event(event, repo)
+
 
 def _payload_hash(data: dict) -> str:
     """
@@ -175,11 +249,10 @@ def _format_order_public(order: dict) -> dict:
 
 def _event_to_public_dict(event) -> dict:
     """
-    Serialise a RebalanceEvent for the public GET /delta and refresh response.
+    Serialise a RebalanceEvent for the public GET /delta response.
 
-    Includes 'id' so the frontend can call POST /delta/<id>/refresh 
-    on pending events.
-    
+    Includes 'id' for client reference.
+
     Deliberately omits:
       - target_weights
       - error_message
@@ -578,110 +651,12 @@ def get_delta():
     else:
         events = repo.get_all(strategy_id)
 
+    reconcile_pending(events, repo)
     events = [e for e in events if e.orders]
     return jsonify({
         "count":  len(events),
         "events": [_event_to_public_dict(e) for e in events],
     }), 200
-
-@bp.route("/delta/<int:event_id>/refresh", methods=["POST"])
-@limiter.limit("10 per minute")
-def refresh_fill_status(event_id: int):
-    """
-    Re-poll Alpaca for the fill status of any pending orders in a rebalance event.
-
-    Called by the frontend when the user clicks the retry button on an event
-    that has orders still in 'pending' fill status.  The webhook flow is NOT
-    repeated; only the fill status query (GET /v2/orders/{id}) is made.
-
-    Responses:
-        200 OK - updated event returned (orders may still be pending if Alpaca
-                 hasn't reached a terminal state yet).
-        404    - event_id not found in the database.
-        502    - Alpaca API unreachable.
-        500    - DB update failed.
-    """
-    repo = RebalanceRepository(current_app.config["DB_SESSION"])
-    event = repo.get_by_id(event_id)
-
-    if event is None:
-        return jsonify({"error": f"Event {event_id} not found."}), 404
-
-    # Find orders that still need a fill status update
-    pending_orders = [
-        o for o in event.orders
-        if o.get("alpaca_order_id")
-        and o.get("fill_status") not in _TERMINAL_FILL_STATUSES
-    ]
-
-    if not pending_orders:
-        # Nothing to re-poll; return current state as-is
-        logger.info("Refresh requested for event %s but no pending orders found.", event_id)
-        return jsonify(_event_to_public_dict(event)), 200
-
-    # Resolve the strategy so we use per-strategy account creds, not the default key
-    try:
-        strategy = reg.get_strategy(event.strategy_id)
-    except (KeyError, TypeError):
-        return jsonify({"error": f"Unknown strategy_id '{event.strategy_id}' on event."}), 500
-
-    # Build Alpaca client for re-polling
-    try:
-        alpaca = AlpacaClient(
-            api_key=os.getenv(strategy["alpaca_key_env"], ""),
-            api_secret=os.getenv(strategy["alpaca_secret_env"], ""),
-            mode=current_app.config["ALPACA_MODE"],
-        )
-    except Exception as exc:
-        logger.error("Failed to create Alpaca client for refresh: %s", exc)
-        return jsonify({"error": f"Failed to connect to Alpaca: {exc}"}), 502
-
-    # Build a mutable copy of the orders list so we can update individual entries
-    updated_orders = [dict(o) for o in event.orders]
-
-    for i, order in enumerate(updated_orders):
-        if not order.get("alpaca_order_id"):
-            continue
-        if order.get("fill_status") in _TERMINAL_FILL_STATUSES:
-            continue
-
-        order_id = order["alpaca_order_id"]
-        try:
-            body = alpaca.get_order(order_id)
-        except AlpacaError as exc:
-            # Leave this order as pending; log and continue to the next
-            logger.warning(
-                "Re-poll failed | event_id=%s order_id=%s symbol=%s error=%s",
-                event_id, order_id, order["symbol"], exc,
-            )
-            continue
-
-        alpaca_status = body.get("status", "unknown")
-        updated_orders[i]["fill_status"] = alpaca_status
-
-        if alpaca_status in _TERMINAL_FILL_STATUSES:
-            raw_qty   = body.get("filled_qty")
-            raw_price = body.get("filled_avg_price")
-            updated_orders[i]["filled_qty"]       = float(raw_qty) if raw_qty else None
-            updated_orders[i]["filled_avg_price"] = float(raw_price) if raw_price else None
-
-            logger.info(
-                "Fill confirmed via refresh | event_id=%s order_id=%s symbol=%s "
-                "status=%s filled_qty=%s filled_avg_price=%s",
-                event_id, order_id, order["symbol"],
-                alpaca_status, updated_orders[i]["filled_qty"],
-                updated_orders[i]["filled_avg_price"],
-            )
-
-    # Persist the updated orders back to DB
-    try:
-        event = repo.update_orders(event_id, updated_orders)
-    except SQLAlchemyError as exc:
-        logger.error("DB update failed for event %s: %s", event_id, exc)
-        return jsonify({"error": "Failed to update rebalance record."}), 500
-
-    return jsonify(_event_to_public_dict(event)), 200
-
 
 @bp.route("/config", methods=["GET"])
 def get_config():
