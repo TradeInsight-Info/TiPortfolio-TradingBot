@@ -111,6 +111,29 @@ function AppContent() {
           <DeltaTable />
         )}
       </section>
+
+      <footer className="border-t border-border mt-16 px-6 py-8 text-sm text-muted-foreground">
+        <p>
+          Built by{" "}
+          <a
+            href="https://www.linkedin.com/in/vicky-chang-vc95/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-foreground hover:text-primary transition-colors"
+          >
+            Vicky
+          </a>{" "}
+          &amp;{" "}
+          <a
+            href="https://github.com/tim-hub"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-foreground hover:text-primary transition-colors"
+          >
+            Tim
+          </a>
+        </p>
+      </footer>
     </>
   );
 }
