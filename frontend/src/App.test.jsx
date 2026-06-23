@@ -30,14 +30,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("footer credits Vicky (LinkedIn) and Tim (GitHub)", async () => {
+test("footer credits Tim B (Maintainer, GitHub) and Vicky Chang (Developer, LinkedIn)", async () => {
   render(<App />);
 
-  const vicky = await screen.findByRole("link", { name: "Vicky" });
+  const tim = await screen.findByRole("link", { name: "Tim B" });
+  expect(tim.getAttribute("href")).toBe("https://github.com/tim-hub");
+
+  const vicky = screen.getByRole("link", { name: "Vicky Chang" });
   expect(vicky.getAttribute("href")).toBe(
     "https://www.linkedin.com/in/vicky-chang-vc95/"
   );
 
-  const tim = screen.getByRole("link", { name: "Tim" });
-  expect(tim.getAttribute("href")).toBe("https://github.com/tim-hub");
+  expect(screen.getByText("Maintainer")).toBeTruthy();
+  expect(screen.getByText("Developer")).toBeTruthy();
 });
