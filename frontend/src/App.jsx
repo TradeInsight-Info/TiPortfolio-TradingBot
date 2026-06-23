@@ -122,7 +122,7 @@ function AppContent() {
               rel="noopener noreferrer"
               className="font-medium text-foreground hover:text-primary transition-colors"
             >
-              Tim B
+              Tim
             </a>
             <p className="text-xs mt-1">Maintainer</p>
           </div>

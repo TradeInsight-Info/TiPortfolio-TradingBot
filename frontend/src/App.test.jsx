@@ -33,7 +33,7 @@ afterEach(() => {
 test("footer credits Tim B (Maintainer, GitHub) and Vicky Chang (Developer, LinkedIn)", async () => {
   render(<App />);
 
-  const tim = await screen.findByRole("link", { name: "Tim B" });
+  const tim = await screen.findByRole("link", { name: "Tim" });
   expect(tim.getAttribute("href")).toBe("https://github.com/tim-hub");
 
   const vicky = screen.getByRole("link", { name: "Vicky Chang" });
