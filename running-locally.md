@@ -28,25 +28,13 @@ curl http://localhost:5000/health
 
 ## 2. Trigger the webhook manually
 
-To trigger the strategy manually:
-
-```bash
-# Inside the scheduler container (uses live yfinance data)
-docker compose exec scheduler python /app/strategies/strategy_runner.py
-
-# Locally against the running bot
-TRADING_BOT_WEBHOOK_URL=http://localhost:5000 python scheduler/strategies/strategy_runner.py
-
-# Dry run — prints weights, no POST
-python scheduler/strategies/strategy_runner.py --dry-run
-```
-
-Or POST directly with hardcoded weights:
+To trigger a rebalance, POST directly to the webhook:
 
 ```bash
 curl -X POST http://localhost:5000/webhook \
   -H "Content-Type: application/json" \
-  -d '{"weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}}'
+  -H "Authorization: Bearer $(echo $WEBHOOK_SECRET)" \
+  -d '{"strategy_id": "vix", "weights": {"QQQ": 0.5, "BIL": 0.5}}'
 ```
 
 ---

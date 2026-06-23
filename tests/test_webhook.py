@@ -43,7 +43,7 @@ def seeded_success_event(app):
     with app.app_context():
         repo = RebalanceRepository(app.config["DB_SESSION"])
         repo.save(
-            target_weights={"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10},
+            target_weights={"QQQ": 0.5, "BIL": 0.5},
             orders=[],
             status="success",
         )
@@ -231,8 +231,8 @@ class TestSymbolUniverseWarning:
         assert "symbol_universe_changed" not in caplog.text
 
     def test_warning_when_symbols_change(self, app, mock_alpaca, caplog, seeded_success_event):
-        # seeded_success_event has target_weights {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}
-        # Incoming payload has only QQQ — universe changed (BIL/GLD dropped)
+        # seeded_success_event has target_weights {"QQQ": 0.5, "BIL": 0.5}
+        # Incoming payload has only QQQ — universe changed (BIL dropped)
         with app.test_client() as client:
             with caplog.at_level(logging.WARNING, logger="app.webhook"):
                 resp = client.post(
@@ -248,7 +248,7 @@ class TestSymbolUniverseWarning:
             with caplog.at_level(logging.WARNING, logger="app.webhook"):
                 resp = client.post(
                     "/webhook",
-                    json={"strategy_id": "vix", "weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                    json={"strategy_id": "vix", "weights": {"QQQ": 0.5, "BIL": 0.5}},
                     headers={"Authorization": "Bearer test-secret"},
                 )
         assert resp.status_code == 202
@@ -258,11 +258,11 @@ class TestSymbolUniverseWarning:
 class TestPositionDriftLogging:
     def test_no_drift_warning_in_normal_operation(self, app, caplog, seeded_success_event):
         """No drift when Alpaca positions match the last event's target symbols."""
-        # seeded_success_event targets QQQ/BIL/GLD
+        # seeded_success_event targets QQQ/BIL
         # mock Alpaca to return exactly those same symbols with non-zero qty
         mock_client = MagicMock()
-        mock_client.get_positions.return_value = {"QQQ": 10.0, "BIL": 16.0, "GLD": 2.0}
-        mock_client.get_latest_prices.return_value = {"QQQ": 700.0, "BIL": 91.0, "GLD": 413.0}
+        mock_client.get_positions.return_value = {"QQQ": 10.0, "BIL": 16.0}
+        mock_client.get_latest_prices.return_value = {"QQQ": 700.0, "BIL": 91.0}
         mock_client.get_account_equity.return_value = 10_000.0
 
         with patch("app.webhook.AlpacaClient", return_value=mock_client), \
@@ -274,7 +274,7 @@ class TestPositionDriftLogging:
                 with caplog.at_level(logging.WARNING, logger="app.webhook"):
                     client.post(
                         "/webhook",
-                        json={"strategy_id": "vix", "weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                        json={"strategy_id": "vix", "weights": {"QQQ": 0.5, "BIL": 0.5}},
                         headers={"Authorization": "Bearer test-secret"},
                     )
         assert "position_drift_detected" not in caplog.text
@@ -283,9 +283,9 @@ class TestPositionDriftLogging:
         """Drift detected when Alpaca holds an unexpected symbol (SPY position via get_positions)."""
         mock_client = MagicMock()
         # Alpaca has SPY (unexpected) alongside the expected symbols
-        mock_client.get_positions.return_value = {"QQQ": 10.0, "BIL": 16.0, "GLD": 2.0, "SPY": 8.0}
+        mock_client.get_positions.return_value = {"QQQ": 10.0, "BIL": 16.0, "SPY": 8.0}
         mock_client.get_latest_prices.return_value = {
-            "QQQ": 700.0, "BIL": 91.0, "GLD": 413.0, "SPY": 738.0
+            "QQQ": 700.0, "BIL": 91.0, "SPY": 738.0
         }
         mock_client.get_account_equity.return_value = 10_000.0
 
@@ -298,7 +298,7 @@ class TestPositionDriftLogging:
                 with caplog.at_level(logging.WARNING, logger="app.webhook"):
                     client.post(
                         "/webhook",
-                        json={"strategy_id": "vix", "weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                        json={"strategy_id": "vix", "weights": {"QQQ": 0.5, "BIL": 0.5}},
                         headers={"Authorization": "Bearer test-secret"},
                     )
         assert "position_drift_detected" in caplog.text
@@ -325,11 +325,11 @@ class TestPositionDriftLogging:
         assert "position_drift_detected" not in caplog.text
 
     def test_drift_warning_when_expected_symbol_missing(self, app, caplog, seeded_success_event):
-        """Drift detected when last event targeted GLD but Alpaca no longer holds it."""
+        """Drift detected when last event targeted BIL but Alpaca no longer holds it."""
         mock_client = MagicMock()
-        # GLD was sold out-of-band — qty is 0 so it's excluded from actual_symbols
-        mock_client.get_positions.return_value = {"QQQ": 10.0, "BIL": 16.0, "GLD": 0.0}
-        mock_client.get_latest_prices.return_value = {"QQQ": 700.0, "BIL": 91.0, "GLD": 413.0}
+        # BIL was sold out-of-band — qty is 0 so it's excluded from actual_symbols
+        mock_client.get_positions.return_value = {"QQQ": 10.0, "BIL": 0.0}
+        mock_client.get_latest_prices.return_value = {"QQQ": 700.0, "BIL": 91.0}
         mock_client.get_account_equity.return_value = 10_000.0
 
         with patch("app.webhook.AlpacaClient", return_value=mock_client), \
@@ -341,7 +341,7 @@ class TestPositionDriftLogging:
                 with caplog.at_level(logging.WARNING, logger="app.webhook"):
                     client.post(
                         "/webhook",
-                        json={"strategy_id": "vix", "weights": {"QQQ": 0.75, "BIL": 0.15, "GLD": 0.10}},
+                        json={"strategy_id": "vix", "weights": {"QQQ": 0.5, "BIL": 0.5}},
                         headers={"Authorization": "Bearer test-secret"},
                     )
         assert "position_drift_detected" in caplog.text
