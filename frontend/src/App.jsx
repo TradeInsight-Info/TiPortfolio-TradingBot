@@ -113,6 +113,7 @@ function AppContent() {
       </section>
 
       <footer className="border-t border-border mt-16 px-6 py-8 text-sm text-muted-foreground">
+        <p className="text-center mb-4">Built by the TradeInsight Team</p>
         <div className="flex justify-center gap-12 text-center">
           <div>
             <a

@@ -43,4 +43,5 @@ test("footer credits Tim B (Maintainer, GitHub) and Vicky Chang (Developer, Link
 
   expect(screen.getByText("Maintainer")).toBeTruthy();
   expect(screen.getByText("Developer")).toBeTruthy();
+  expect(screen.getByText("Built by the TradeInsight Team")).toBeTruthy();
 });
