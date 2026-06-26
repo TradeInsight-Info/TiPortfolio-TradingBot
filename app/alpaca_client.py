@@ -227,7 +227,11 @@ class AlpacaClient:
         Fetch daily portfolio equity history from Alpaca.
 
         Uses the trading API endpoint:
-            GET /v2/account/portfolio/history?timeframe=1D&start={start}
+            GET /v2/account/portfolio/history?timeframe=1D&start={start}&end={today}
+
+        An explicit end=today is required: without it Alpaca's 1D history
+        defaults to a ~1-month window from start and silently drops the most
+        recent days, freezing the equity curve once start is >1 month old.
 
         Returns:
             List of {"date": "YYYY-MM-DD", "equity": float} dicts, oldest first.
@@ -238,7 +242,7 @@ class AlpacaClient:
         """
         url = (
             f"{self._base_url}/v2/account/portfolio/history"
-            f"?timeframe=1D&start={start.isoformat()}"
+            f"?timeframe=1D&start={start.isoformat()}&end={date.today().isoformat()}"
         )
         logger.info("Fetching portfolio history from Alpaca (%s) since %s", self._mode, start)
         body = self._get(url)

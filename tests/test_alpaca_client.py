@@ -206,3 +206,32 @@ class TestGetAccount:
             client = AlpacaClient("key", "secret", "paper")
             result = client.get_account()
         assert result == {"equity": 10067.79, "cash": 0.0}
+
+
+class TestGetPortfolioHistory:
+    def test_request_includes_explicit_end_today(self):
+        """Regression: without end=today Alpaca's 1D history defaults to a
+        ~1-month window from start and drops recent days, freezing the curve."""
+        from datetime import date
+        resp = mock_response({"timestamp": [], "equity": []})
+        with patch("app.alpaca_client.requests.get", return_value=resp) as mock_get:
+            make_client().get_portfolio_history(date(2026, 5, 19))
+        url = mock_get.call_args[0][0]
+        assert "start=2026-05-19" in url
+        assert f"end={date.today().isoformat()}" in url
+
+    def test_parses_timestamps_and_filters_zero_equity(self):
+        import calendar
+        from datetime import date, datetime, timezone
+        ts = [
+            int(calendar.timegm(datetime(2026, 6, 24, tzinfo=timezone.utc).timetuple())),
+            int(calendar.timegm(datetime(2026, 6, 25, tzinfo=timezone.utc).timetuple())),
+            int(calendar.timegm(datetime(2026, 6, 26, tzinfo=timezone.utc).timetuple())),
+        ]
+        resp = mock_response({"timestamp": ts, "equity": [10000.0, 0, 9954.81]})
+        with patch("app.alpaca_client.requests.get", return_value=resp):
+            result = make_client().get_portfolio_history(date(2026, 6, 24))
+        assert result == [
+            {"date": "2026-06-24", "equity": 10000.0},
+            {"date": "2026-06-26", "equity": 9954.81},
+        ]
