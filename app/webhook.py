@@ -351,7 +351,7 @@ def receive_signal():
             "payload_hash":    payload_hash,
             "rebalance_event": _event_to_dict(_existing),
         }), 202
-    _last_event = _read_repo.get_last_successful()
+    _last_event = _read_repo.get_last_successful(strategy_id)
     if _last_event and _last_event.target_weights:
         prev_symbols = {s for s, w in _last_event.target_weights.items() if w > 0}
         new_symbols  = set(target_weights.keys())

@@ -227,6 +227,33 @@ class TestGetLastSuccessful:
         result = repo.get_last_successful()
         assert result.id == newer.id
 
+    def test_scopes_to_strategy_when_given(self, repo, sample_weights, sample_orders):
+        # All three strategies fire at 09:40, so the newest success overall is
+        # usually another strategy's portfolio entirely.
+        vix = repo.save(
+            target_weights=sample_weights, orders=sample_orders, status="success",
+            strategy_id="vix",
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        repo.save(
+            target_weights={"SPY": 1.0}, orders=[], status="success",
+            strategy_id="trend_broad",
+        )
+        assert repo.get_last_successful("vix").id == vix.id
+        assert repo.get_last_successful("pit_top5") is None
+
+    def test_unscoped_call_returns_newest_overall(self, repo, sample_weights, sample_orders):
+        repo.save(
+            target_weights=sample_weights, orders=sample_orders, status="success",
+            strategy_id="vix",
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        newest = repo.save(
+            target_weights={"SPY": 1.0}, orders=[], status="success",
+            strategy_id="trend_broad",
+        )
+        assert repo.get_last_successful().id == newest.id
+
     def test_ignores_no_change_events(self, repo, sample_weights, sample_orders):
         success = repo.save(
             target_weights=sample_weights, orders=sample_orders, status="success",

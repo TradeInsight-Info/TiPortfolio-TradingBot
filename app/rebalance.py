@@ -270,17 +270,17 @@ class RebalanceRepository:
             session.expunge_all()
         return events
 
-    def get_last_successful(self) -> RebalanceEvent | None:
+    def get_last_successful(self, strategy_id: str | None = None) -> RebalanceEvent | None:
         """
         Return the most recent event with status="success", or None if none exists.
+        Scoped to strategy_id when given — each strategy trades its own account, so
+        the newest success overall is usually a different portfolio entirely.
         """
         with self._tx() as session:
-            event = (
-                session.query(RebalanceEvent)
-                .filter(RebalanceEvent.status == "success")
-                .order_by(RebalanceEvent.timestamp.desc())
-                .first()
-            )
+            q = session.query(RebalanceEvent).filter(RebalanceEvent.status == "success")
+            if strategy_id is not None:
+                q = q.filter(RebalanceEvent.strategy_id == strategy_id)
+            event = q.order_by(RebalanceEvent.timestamp.desc()).first()
             if event is not None:
                 session.expunge(event)
         return event
