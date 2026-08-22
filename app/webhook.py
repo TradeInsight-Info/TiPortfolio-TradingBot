@@ -45,15 +45,18 @@ bp = Blueprint("webhook", __name__)
 
 WEIGHT_SUM_TOLERANCE = 0.01
 
-# Alpaca order lifecycle statuses that indicate a fill state
-_TERMINAL_FILL_STATUSES = frozenset({
+# Statuses after which Alpaca will fill no more of the order. partially_filled is
+# deliberately absent: such an order can still progress to filled, and counting it
+# as done froze the stored record at whatever chunk Alpaca had reported so far.
+_SETTLED_FILL_STATUSES = frozenset({
     "filled",
-    "partially_filled",
     "canceled",
     "expired",
     "rejected",
     "done_for_day",
 })
+# Statuses whose response carries a real filled_qty / filled_avg_price worth storing.
+_FILL_DATA_STATUSES = _SETTLED_FILL_STATUSES | {"partially_filled"}
 
 _RECONCILE_WINDOW = timedelta(days=7)
 _RECONCILE_COOLDOWN_S = 60.0
@@ -66,7 +69,7 @@ def _reconcile_event(event, repo) -> None:
     Swallows per-order Alpaca errors. No-op if no creds / no pending orders."""
     updated = [dict(o) for o in event.orders]
     pending_idx = [i for i, o in enumerate(updated)
-                   if o.get("alpaca_order_id") and o.get("fill_status") not in _TERMINAL_FILL_STATUSES]
+                   if o.get("alpaca_order_id") and o.get("fill_status") not in _SETTLED_FILL_STATUSES]
     if not pending_idx:
         return
     try:
@@ -95,7 +98,7 @@ def _reconcile_event(event, repo) -> None:
         if status != order.get("fill_status"):
             changed = True
         updated[i]["fill_status"] = status
-        if status in _TERMINAL_FILL_STATUSES:
+        if status in _FILL_DATA_STATUSES:
             rq, rp = body.get("filled_qty"), body.get("filled_avg_price")
             updated[i]["filled_qty"] = float(rq) if rq else None
             updated[i]["filled_avg_price"] = float(rp) if rp else None
@@ -106,7 +109,7 @@ def _reconcile_event(event, repo) -> None:
         except SQLAlchemyError as exc:
             logger.error("reconcile: DB update failed event=%s err=%s", event.id, exc)
     with _reconcile_lock:
-        if all(o.get("fill_status") in _TERMINAL_FILL_STATUSES for o in updated):
+        if all(o.get("fill_status") in _SETTLED_FILL_STATUSES for o in updated):
             _reconcile_cooldown.pop(event.id, None)
 
 
@@ -117,7 +120,7 @@ def reconcile_pending(events, repo) -> None:
     for event in events:
         if (now_wall - event.timestamp) > _RECONCILE_WINDOW:
             continue
-        if not any(o.get("alpaca_order_id") and o.get("fill_status") not in _TERMINAL_FILL_STATUSES
+        if not any(o.get("alpaca_order_id") and o.get("fill_status") not in _SETTLED_FILL_STATUSES
                    for o in (event.orders or [])):
             continue
         with _reconcile_lock:

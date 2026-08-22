@@ -125,6 +125,54 @@ class TestReconcileEvent:
         patched_cls.assert_not_called()
         repo.update_orders.assert_not_called()
 
+    def test_partially_filled_order_is_repolled_and_corrected(self, flask_ctx):
+        """Regression: pit_top5 event 15 recorded MRNA sold 12.0 when 13.845621 had
+        actually filled. partially_filled was treated as settled, so the record froze
+        at the first chunk Alpaca reported and was never revisited."""
+        order = _pending_order()
+        order["fill_status"] = "partially_filled"
+        order["filled_qty"] = 12.0
+        event = _make_event(orders=[order])
+        repo = MagicMock()
+
+        mock_instance = MagicMock()
+        mock_instance.get_order.return_value = {
+            "status": "filled", "filled_qty": "13.845621", "filled_avg_price": "143.175",
+        }
+
+        os.environ["ALPACA_KEY_PIT"] = "pit-key"
+        os.environ["ALPACA_SECRET_PIT"] = "pit-secret"
+
+        with patch("app.webhook.AlpacaClient", return_value=mock_instance):
+            wh._reconcile_event(event, repo)
+
+        mock_instance.get_order.assert_called_once_with("ord-1")
+        updated = repo.update_orders.call_args[0][1]
+        assert updated[0]["fill_status"] == "filled"
+        assert updated[0]["filled_qty"] == 13.845621
+
+    def test_partially_filled_records_its_quantity(self, flask_ctx):
+        """Still partial on re-poll: keep the newest quantity rather than dropping it."""
+        order = _pending_order()
+        order["fill_status"] = "accepted"
+        event = _make_event(orders=[order])
+        repo = MagicMock()
+
+        mock_instance = MagicMock()
+        mock_instance.get_order.return_value = {
+            "status": "partially_filled", "filled_qty": "7", "filled_avg_price": "99.5",
+        }
+
+        os.environ["ALPACA_KEY_PIT"] = "pit-key"
+        os.environ["ALPACA_SECRET_PIT"] = "pit-secret"
+
+        with patch("app.webhook.AlpacaClient", return_value=mock_instance):
+            wh._reconcile_event(event, repo)
+
+        updated = repo.update_orders.call_args[0][1]
+        assert updated[0]["fill_status"] == "partially_filled"
+        assert updated[0]["filled_qty"] == 7.0
+
     def test_alpaca_error_does_not_raise(self, flask_ctx):
         """An AlpacaError on get_order is swallowed; the function returns normally."""
         event = _make_event(orders=[_pending_order()])

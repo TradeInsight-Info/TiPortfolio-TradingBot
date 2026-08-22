@@ -34,15 +34,18 @@ _REQUEST_TIMEOUT_SECONDS = 10
 _FILL_POLL_INTERVAL_SECONDS: float = 2.0   # seconds between each poll attempt
 _FILL_POLL_TIMEOUT_SECONDS: float = 30.0   # give up after this many seconds total
 
-# Alpaca order lifecycle statuses that indicate a fill state
-_TERMINAL_FILL_STATUSES = frozenset({
+# Statuses after which Alpaca will fill no more of the order. partially_filled is
+# deliberately absent: such an order can still progress to filled, and counting it
+# as done froze the stored record at whatever chunk Alpaca had reported so far.
+_SETTLED_FILL_STATUSES = frozenset({
     "filled",
-    "partially_filled",
     "canceled",
     "expired",
     "rejected",
     "done_for_day",
 })
+# Statuses whose response carries a real filled_qty / filled_avg_price worth storing.
+_FILL_DATA_STATUSES = _SETTLED_FILL_STATUSES | {"partially_filled"}
 
 @dataclass
 class OrderResult:
@@ -148,7 +151,7 @@ class OrderExecutor:
 
         non_terminal = [
             r for r in sell_results
-            if r.success and r.alpaca_order_id and r.fill_status not in _TERMINAL_FILL_STATUSES
+            if r.success and r.alpaca_order_id and r.fill_status not in _SETTLED_FILL_STATUSES
         ]
         if non_terminal:
             symbols = ", ".join(r.symbol for r in non_terminal)
@@ -183,7 +186,7 @@ class OrderExecutor:
             still_pending = []
             for result in pending:
                 self._poll_fill(result)
-                if result.fill_status not in _TERMINAL_FILL_STATUSES:
+                if result.fill_status not in _SETTLED_FILL_STATUSES:
                     still_pending.append(result)
             pending = still_pending
 
@@ -347,7 +350,7 @@ class OrderExecutor:
         alpaca_status = body.get("status", "unknown")
         result.fill_status = alpaca_status
 
-        if alpaca_status in _TERMINAL_FILL_STATUSES:
+        if alpaca_status in _FILL_DATA_STATUSES:
             # Parse filled_qty - Alpaca returns it as a string, e.g. "10" or "0"
             raw_qty   = body.get("filled_qty")
             raw_price = body.get("filled_avg_price")
