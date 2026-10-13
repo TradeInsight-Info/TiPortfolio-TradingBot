@@ -21,6 +21,7 @@ Return:
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -295,7 +296,7 @@ def receive_signal():
         502 Bad Gateway - Alpaca API is unreachable.
     """
     secret = current_app.config.get("WEBHOOK_SECRET")
-    if not secret or request.headers.get("Authorization") != f"Bearer {secret}":
+    if not secret or not hmac.compare_digest(request.headers.get("Authorization", ""), f"Bearer {secret}"):
         return jsonify({"error": "Unauthorized"}), 401
 
     received_at = datetime.now(timezone.utc)

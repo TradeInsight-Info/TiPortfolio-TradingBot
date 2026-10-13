@@ -22,3 +22,6 @@ k8s/*-secrets.yaml
 k8s/*-secret.yaml
 .claude/
 .wrangler/
+
+*_backup_*
+docs/superpowers/
