@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 bp = Blueprint("webhook", __name__)
 
 WEIGHT_SUM_TOLERANCE = 0.01
+INVESTED_FRACTION_OF_EQUITY = 0.995
 
 # Statuses after which Alpaca will fill no more of the order. partially_filled is
 # deliberately absent: such an order can still progress to filled, and counting it
@@ -443,7 +444,7 @@ def receive_signal():
     # 5. Calculate share deltas (same for both modes)
     try:
         deltas = calculate_deltas(
-            portfolio_value=portfolio_value,
+            portfolio_value=portfolio_value * INVESTED_FRACTION_OF_EQUITY,
             target_weights=target_weights,
             current_positions=current_positions,
             current_prices=current_prices,
