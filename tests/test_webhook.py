@@ -217,6 +217,14 @@ class TestPortfolioEquityAndAudit:
         assert config["initial_amount"] == 10_000.0
 
 
+    def test_buys_leave_cash_for_fills_above_the_last_price(self, fresh_client, mock_alpaca):
+        _, mock_executor = mock_alpaca
+        post_webhook(fresh_client, {"strategy_id": "vix", "weights": {"QQQ": 0.8, "BIL": 0.2}})
+        deltas = mock_executor.execute.call_args.args[0]
+        buy_cost = sum(d.delta * 100.0 for d in deltas)
+        assert 9_900.0 < buy_cost <= 9_950.0
+
+
 class TestSymbolUniverseWarning:
     def test_no_warning_on_first_rebalance(self, app, mock_alpaca, caplog):
         # No prior events in DB → no warning; QQQ/BIL are in the vix universe
